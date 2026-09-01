@@ -377,10 +377,10 @@ main section {
 
 .hero h1 {
   margin: 24px 0 0;
-  max-width: 590px;
-  font-size: 62px;
+  max-width: 540px;
+  font-size: 54px;
   line-height: 1.05;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .hero h1 span {
@@ -400,10 +400,10 @@ main section {
 }
 
 .hero-copy > p {
-  max-width: 650px;
-  margin: 30px 0 25px;
+  max-width: 600px;
+  margin: 26px 0 24px;
   color: var(--muted);
-  font-size: 19px;
+  font-size: 18px;
   line-height: 1.46;
 }
 
@@ -1944,11 +1944,13 @@ input[type="range"] {
   }
 
   .hero h1 {
-    font-size: 58px;
+    max-width: 520px;
+    font-size: 48px;
   }
 
   .hero-copy > p {
-    font-size: 21px;
+    max-width: 580px;
+    font-size: 17px;
   }
 
   .feature-grid {
@@ -1989,13 +1991,13 @@ input[type="range"] {
   .hero h1,
   .section-head h2,
   .cta-card h2 {
-    font-size: 40px;
+    font-size: 36px;
   }
 
   .hero-copy > p,
   .section-head p,
   .feature-card.wide p {
-    font-size: 18px;
+    font-size: 16px;
   }
 
   .parcel-stage {
