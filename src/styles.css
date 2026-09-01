@@ -136,10 +136,24 @@ html[data-theme="dark"] .grid-overlay {
   border-bottom: 0;
   background: transparent;
   backdrop-filter: none;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    backdrop-filter 180ms ease;
 }
 
 html[data-theme="dark"] .site-header {
   background: transparent;
+}
+
+.site-header.is-scrolled {
+  border-bottom: 1px solid var(--hairline);
+  background: rgba(245, 249, 255, 0.9);
+  backdrop-filter: blur(18px);
+}
+
+html[data-theme="dark"] .site-header.is-scrolled {
+  background: rgba(7, 17, 31, 0.9);
 }
 
 html[data-theme="dark"] .nav-links,

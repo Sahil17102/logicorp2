@@ -250,6 +250,7 @@ function useActiveSection() {
 
 function Header({ theme, activeSection, onThemeToggle }) {
   const [open, setOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const ThemeIcon = theme === 'dark' ? Moon : Sun;
   const navItems = [
     ['features', 'Platform'],
@@ -258,8 +259,15 @@ function Header({ theme, activeSection, onThemeToggle }) {
     ['pricing', 'Pricing'],
   ];
 
+  useEffect(() => {
+    const updateHeader = () => setIsScrolled(window.scrollY > 24);
+    updateHeader();
+    window.addEventListener('scroll', updateHeader, { passive: true });
+    return () => window.removeEventListener('scroll', updateHeader);
+  }, []);
+
   return (
-    <header className="site-header">
+    <header className={`site-header ${isScrolled ? 'is-scrolled' : ''}`}>
       <nav className="container nav">
         <a href="#top" aria-label="Logicorp home">
           <Logo />
