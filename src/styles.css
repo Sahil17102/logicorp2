@@ -217,8 +217,8 @@ main section {
   gap: 34px;
   align-items: center;
   color: #47566d;
-  font-weight: 700;
-  font-size: 16px;
+  font-weight: 500;
+  font-size: 15px;
 }
 
 .nav-links a,
@@ -278,15 +278,15 @@ main section {
 
 .signin {
   color: #47566d;
-  font-weight: 700;
-  font-size: 16px;
+  font-weight: 500;
+  font-size: 15px;
 }
 
 .icon-button,
 .menu-button {
   display: inline-flex;
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--hairline);
@@ -303,15 +303,15 @@ main section {
 
 .button {
   display: inline-flex;
-  min-height: 50px;
+  min-height: 46px;
   align-items: center;
   justify-content: center;
   gap: 10px;
   border: 1px solid transparent;
   border-radius: 12px;
-  padding: 0 22px;
-  font-weight: 750;
-  font-size: 15px;
+  padding: 0 20px;
+  font-weight: 650;
+  font-size: 14px;
   white-space: nowrap;
   transition:
     transform 160ms ease,
@@ -340,9 +340,9 @@ main section {
 }
 
 .button.small {
-  min-height: 48px;
-  padding: 0 24px;
-  font-size: 15px;
+  min-height: 46px;
+  padding: 0 22px;
+  font-size: 14px;
 }
 
 .button.full {
