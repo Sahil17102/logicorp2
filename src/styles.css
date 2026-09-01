@@ -133,13 +133,13 @@ html[data-theme="dark"] .grid-overlay {
   inset: 0 0 auto;
   z-index: 50;
   height: 72px;
-  border-bottom: 1px solid var(--hairline);
-  background: rgba(245, 249, 255, 0.82);
-  backdrop-filter: blur(20px);
+  border-bottom: 0;
+  background: transparent;
+  backdrop-filter: none;
 }
 
 html[data-theme="dark"] .site-header {
-  background: rgba(7, 17, 31, 0.82);
+  background: transparent;
 }
 
 html[data-theme="dark"] .nav-links,
