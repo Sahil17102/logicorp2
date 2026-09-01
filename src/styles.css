@@ -380,6 +380,7 @@ main section {
   max-width: 540px;
   font-size: 54px;
   line-height: 1.05;
+  letter-spacing: 0;
   font-weight: 700;
 }
 
@@ -925,7 +926,8 @@ main section {
   color: var(--content);
   font-size: 36px;
   line-height: 1.12;
-  font-weight: 750;
+  letter-spacing: 0;
+  font-weight: 700;
 }
 
 .section-head p {
@@ -1067,6 +1069,8 @@ html[data-theme="dark"] .footer {
   margin: 18px 0 10px;
   font-size: 20px;
   line-height: 1.15;
+  letter-spacing: 0;
+  font-weight: 700;
 }
 
 .feature-card p,
@@ -1080,6 +1084,7 @@ html[data-theme="dark"] .footer {
 .feature-card.wide h3 {
   margin-top: 24px;
   font-size: 25px;
+  font-weight: 700;
 }
 
 .feature-card.wide p {
@@ -1288,6 +1293,7 @@ html[data-theme="dark"] .timeline .runner::after {
 .calculator-section .section-head h2 {
   max-width: 900px;
   font-size: 40px;
+  font-weight: 700;
 }
 
 .calculator-section .section-head p {
@@ -1719,7 +1725,8 @@ input[type="range"] {
   color: var(--content);
   font-size: 36px;
   line-height: 1.1;
-  font-weight: 750;
+  letter-spacing: 0;
+  font-weight: 700;
 }
 
 .cta-card p {
