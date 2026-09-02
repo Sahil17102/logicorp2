@@ -1,29 +1,8 @@
 import type { NotificationListResponse } from "./types";
 
 const staticNotifications: NotificationListResponse = {
-  items: [
-    {
-      id: "demo-notification-1",
-      event: "shipment.delayed",
-      category: "operations",
-      title: "12 delayed shipments need review",
-      body: "Open orders are already loaded locally for this static admin preview.",
-      link: "/orders",
-      readAt: null,
-      createdAt: "2026-09-02T12:30:00.000Z",
-    },
-    {
-      id: "demo-notification-2",
-      event: "cod.remittance",
-      category: "finance",
-      title: "COD remittance batch is ready",
-      body: "Static data is available without connecting an API.",
-      link: "/cod-remittance",
-      readAt: "2026-09-02T13:00:00.000Z",
-      createdAt: "2026-09-02T11:45:00.000Z",
-    },
-  ],
-  unreadCount: 1,
+  items: [],
+  unreadCount: 0,
 };
 
 export const notificationsApi = {

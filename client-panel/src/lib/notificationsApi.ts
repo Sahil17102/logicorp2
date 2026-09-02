@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { shouldUseStaticClientData } from "./staticMode";
 
 export interface NotificationItem {
   id: string;
@@ -33,26 +34,121 @@ export interface PreferencesResponse {
   categories: string[];
 }
 
+const CLIENT_NOTIFICATION_PREFS_KEY = "logicorp-client-notification-preferences";
+
+function defaultPreferences(): PreferencesResponse {
+  return {
+    mute: { email: false, whatsapp: false, inApp: false },
+    categories: ["orders", "payments", "account", "support"],
+    events: [
+      {
+        key: "order.created",
+        category: "orders",
+        label: "Order updates",
+        description: "New order, pickup, shipping and delivery updates.",
+        channels: ["email", "inApp"],
+        mandatory: false,
+        settings: { email: true, whatsapp: false, inApp: true },
+      },
+      {
+        key: "wallet.low_balance",
+        category: "payments",
+        label: "Wallet balance",
+        description: "Low balance and wallet credit alerts.",
+        channels: ["email", "inApp"],
+        mandatory: false,
+        settings: { email: true, whatsapp: false, inApp: true },
+      },
+      {
+        key: "account.security",
+        category: "account",
+        label: "Security alerts",
+        description: "Login, password and important account security updates.",
+        channels: ["email", "inApp"],
+        mandatory: true,
+        settings: { email: true, whatsapp: false, inApp: true },
+      },
+      {
+        key: "support.ticket",
+        category: "support",
+        label: "Support replies",
+        description: "Replies and status changes on your support tickets.",
+        channels: ["email", "inApp"],
+        mandatory: false,
+        settings: { email: true, whatsapp: false, inApp: true },
+      },
+    ],
+  };
+}
+
+function readPreferences(): PreferencesResponse {
+  if (typeof window === "undefined") return defaultPreferences();
+  const raw = localStorage.getItem(CLIENT_NOTIFICATION_PREFS_KEY);
+  if (!raw) {
+    const prefs = defaultPreferences();
+    localStorage.setItem(CLIENT_NOTIFICATION_PREFS_KEY, JSON.stringify(prefs));
+    return prefs;
+  }
+  try {
+    return JSON.parse(raw) as PreferencesResponse;
+  } catch {
+    const prefs = defaultPreferences();
+    localStorage.setItem(CLIENT_NOTIFICATION_PREFS_KEY, JSON.stringify(prefs));
+    return prefs;
+  }
+}
+
+function writePreferences(prefs: PreferencesResponse): void {
+  if (typeof window !== "undefined") {
+    localStorage.setItem(CLIENT_NOTIFICATION_PREFS_KEY, JSON.stringify(prefs));
+  }
+}
+
 export const notificationsApi = {
   list: async (opts?: { limit?: number; unread?: boolean }) => {
-    const { data } = await api.get<NotificationListResponse>("/notifications", {
-      params: { limit: opts?.limit, unread: opts?.unread },
-    });
-    return data;
+    if (shouldUseStaticClientData()) return { items: [], unreadCount: 0 };
+    try {
+      const { data } = await api.get<NotificationListResponse>("/notifications", {
+        params: { limit: opts?.limit, unread: opts?.unread },
+      });
+      return data;
+    } catch {
+      return { items: [], unreadCount: 0 };
+    }
   },
   unreadCount: async () => {
-    const { data } = await api.get<{ count: number }>("/notifications/unread-count");
-    return data.count;
+    if (shouldUseStaticClientData()) return 0;
+    try {
+      const { data } = await api.get<{ count: number }>("/notifications/unread-count");
+      return data.count;
+    } catch {
+      return 0;
+    }
   },
   markRead: async (id: string) => {
-    await api.post(`/notifications/${id}/read`);
+    if (shouldUseStaticClientData()) return;
+    try {
+      await api.post(`/notifications/${id}/read`);
+    } catch {
+      return;
+    }
   },
   markAllRead: async () => {
-    await api.post("/notifications/read-all");
+    if (shouldUseStaticClientData()) return;
+    try {
+      await api.post("/notifications/read-all");
+    } catch {
+      return;
+    }
   },
   getPreferences: async () => {
-    const { data } = await api.get<PreferencesResponse>("/notifications/preferences");
-    return data;
+    if (shouldUseStaticClientData()) return readPreferences();
+    try {
+      const { data } = await api.get<PreferencesResponse>("/notifications/preferences");
+      return data;
+    } catch {
+      return readPreferences();
+    }
   },
   updatePreference: async (payload: {
     event?: string;
@@ -60,6 +156,26 @@ export const notificationsApi = {
     enabled?: boolean;
     mute?: Partial<{ email: boolean; whatsapp: boolean; inApp: boolean }>;
   }) => {
-    await api.put("/notifications/preferences", payload);
+    if (!shouldUseStaticClientData()) {
+      try {
+        await api.put("/notifications/preferences", payload);
+        return;
+      } catch {
+        // Keep static preferences usable when the API is unavailable.
+      }
+    }
+
+    const prefs = readPreferences();
+    if (payload.mute) {
+      prefs.mute = { ...prefs.mute, ...payload.mute };
+    }
+    if (payload.event && payload.channel && typeof payload.enabled === "boolean") {
+      prefs.events = prefs.events.map((event) =>
+        event.key === payload.event
+          ? { ...event, settings: { ...event.settings, [payload.channel!]: payload.enabled! } }
+          : event,
+      );
+    }
+    writePreferences(prefs);
   },
 };
