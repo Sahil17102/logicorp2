@@ -9,6 +9,7 @@ import {
   useWalletTransactions,
   useCreateRechargeOrder,
   useVerifyRecharge,
+  useStaticWalletRecharge,
 } from "@/queries/useWallet";
 import { useDeferredFilters } from "@/hooks/useDeferredFilters";
 import { ResponsiveTable, CollapsibleFilters } from "@/components/common";
@@ -22,15 +23,11 @@ import {
 import type { WalletTransaction } from "@/lib/walletApi";
 import { formatCurrency, formatKeyword } from "@/lib/utils";
 import { loadRazorpayScript, openRazorpayCheckout } from "@/lib/razorpay";
+import { shouldUseStaticClientData } from "@/lib/staticMode";
 
 // ── Constants ──
 
 const PAGE_SIZE = 10;
-
-// Razorpay self-recharge is disabled for this project — the wallet is controlled
-// by the server/admin only (sellers cannot top up via Razorpay). Flip to `true`
-// to restore the seller-facing recharge flow.
-const RECHARGE_ENABLED = false;
 
 type Filters = {
   [key: string]: unknown;
@@ -76,6 +73,7 @@ export function WalletPage() {
 
   const createOrder = useCreateRechargeOrder();
   const verifyRecharge = useVerifyRecharge();
+  const staticRecharge = useStaticWalletRecharge();
 
   const transactions = txnData?.transactions ?? [];
   const pagination = txnData?.pagination;
@@ -112,6 +110,16 @@ export function WalletPage() {
     setIsProcessing(true);
 
     try {
+      if (shouldUseStaticClientData()) {
+        const result = await staticRecharge.mutateAsync(numAmount);
+        toast.success(`${formatCurrency(result.creditedAmount)} added to wallet`, {
+          description: `New balance: ${formatCurrency(result.balance)}`,
+        });
+        setAmount("");
+        setIsProcessing(false);
+        return;
+      }
+
       await loadRazorpayScript();
       const order = await createOrder.mutateAsync(numAmount);
 
@@ -153,7 +161,7 @@ export function WalletPage() {
       toast.error(err instanceof Error ? err.message : "Failed to initiate payment");
       setIsProcessing(false);
     }
-  }, [amount, user, createOrder, verifyRecharge]);
+  }, [amount, user, createOrder, verifyRecharge, staticRecharge]);
 
   return (
     <motion.div
@@ -171,18 +179,14 @@ export function WalletPage() {
       </div>
 
       {/* Balance + Recharge */}
-      <div
-        className={`grid grid-cols-1 ${RECHARGE_ENABLED ? "lg:grid-cols-5" : "lg:grid-cols-2"} gap-4 mb-6`}
-      >
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
         <BalanceCard balance={walletData?.balance} isLoading={balanceLoading} />
-        {RECHARGE_ENABLED && (
-          <RechargeCard
-            amount={amount}
-            onAmountChange={setAmount}
-            onRecharge={handleRecharge}
-            isProcessing={isProcessing}
-          />
-        )}
+        <RechargeCard
+          amount={amount}
+          onAmountChange={setAmount}
+          onRecharge={handleRecharge}
+          isProcessing={isProcessing}
+        />
       </div>
 
       {/* Stats */}

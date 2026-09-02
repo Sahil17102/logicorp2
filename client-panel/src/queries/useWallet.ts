@@ -48,3 +48,14 @@ export function useVerifyRecharge() {
     },
   });
 }
+
+export function useStaticWalletRecharge() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: walletApi.rechargeStatic,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: WALLET_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: WALLET_TRANSACTIONS_KEY });
+    },
+  });
+}
