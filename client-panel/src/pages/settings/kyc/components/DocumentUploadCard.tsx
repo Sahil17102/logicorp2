@@ -69,6 +69,16 @@ export function DocumentUploadCard({
     if (!field?.url || !field.mime) return;
     setShowPreview(true);
 
+    if (field.url.startsWith("data:")) {
+      setPreviewBlobUrl(field.url);
+      return;
+    }
+
+    if (field.url.startsWith("local-document://")) {
+      toast.info("This document is stored locally for the demo session.");
+      return;
+    }
+
     // If we already have a blob URL, reuse it
     if (previewBlobUrl) return;
 

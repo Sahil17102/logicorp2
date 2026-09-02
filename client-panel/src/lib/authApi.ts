@@ -2,6 +2,9 @@ import type { User } from "@/contexts/AuthContext";
 import { setAccessToken } from "./api";
 import { isCourierApiConfigured, loginCourierApi, shouldUseCourierApi } from "./courierApi";
 
+const USER_STORAGE_KEY = "logicorp-client-user";
+const ONBOARDING_STORAGE_KEY = "logicorp-client-onboarding-complete";
+
 const DEMO_USER: User = {
   id: "demo-client-user",
   email: "client@logicorp.in",
@@ -13,24 +16,49 @@ const DEMO_USER: User = {
   teamRole: "owner",
   parentUserId: null,
   isVerified: true,
-  onboardingComplete: true,
+  onboardingComplete: false,
   hasPassword: true,
 };
 
+function hasCompletedOnboarding(): boolean {
+  return localStorage.getItem(ONBOARDING_STORAGE_KEY) === "true";
+}
+
+function withOnboardingState(user: User): User {
+  return {
+    ...user,
+    onboardingComplete: user.onboardingComplete && hasCompletedOnboarding(),
+  };
+}
+
 function readUser(): User | null {
-  const raw = localStorage.getItem("logicorp-client-user");
+  const raw = localStorage.getItem(USER_STORAGE_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as User;
+    return withOnboardingState(JSON.parse(raw) as User);
   } catch {
     return DEMO_USER;
   }
 }
 
 function persistUser(user: User): User {
-  localStorage.setItem("logicorp-client-user", JSON.stringify(user));
+  if (user.onboardingComplete) {
+    localStorage.setItem(ONBOARDING_STORAGE_KEY, "true");
+  }
+  const normalized = withOnboardingState(user);
+  localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(normalized));
   setAccessToken("static-client-token");
-  return user;
+  return normalized;
+}
+
+function makeLoginUser(identifier?: string): User {
+  const cleanIdentifier = identifier?.trim() || "";
+  return {
+    ...DEMO_USER,
+    email: cleanIdentifier.includes("@") ? cleanIdentifier : DEMO_USER.email,
+    phone: cleanIdentifier && !cleanIdentifier.includes("@") ? cleanIdentifier : DEMO_USER.phone,
+    onboardingComplete: hasCompletedOnboarding(),
+  };
 }
 
 export const authApi = {
@@ -41,14 +69,15 @@ export const authApi = {
   },
 
   sendOtp: async (_email: string): Promise<{ isNewUser: boolean }> => {
-    return { isNewUser: false };
+    return { isNewUser: !hasCompletedOnboarding() };
   },
 
-  verifyOtp: async (_params: {
+  verifyOtp: async (params: {
     identifier: string;
     code: string;
   }): Promise<{ user: User; isNewUser: boolean }> => {
-    return { user: persistUser(DEMO_USER), isNewUser: false };
+    const user = makeLoginUser(params.identifier);
+    return { user: persistUser(user), isNewUser: !user.onboardingComplete };
   },
 
   loginWithPassword: async (params: {
@@ -59,26 +88,39 @@ export const authApi = {
     if (shouldUseCourierApi() && !isCourierApiConfigured()) {
       await loginCourierApi(identifier, params.password);
     }
-    const user = {
-      ...DEMO_USER,
-      email: identifier.includes("@") ? identifier : DEMO_USER.email,
-      phone: identifier.includes("@") ? DEMO_USER.phone : identifier,
-    };
+    const user = makeLoginUser(identifier);
     return { user: persistUser(user) };
   },
 
-  loginWithGoogle: async (_params: {
+  loginWithGoogle: async (params: {
     accessToken: string;
   }): Promise<{ user: User; isNewUser: boolean }> => {
-    return { user: persistUser(DEMO_USER), isNewUser: false };
+    const user = makeLoginUser(params.accessToken.includes("@") ? params.accessToken : undefined);
+    return { user: persistUser(user), isNewUser: !user.onboardingComplete };
   },
 
-  onboarding: async (_payload: Record<string, unknown>): Promise<{ user: User }> => {
-    return { user: persistUser({ ...DEMO_USER, onboardingComplete: true }) };
+  onboarding: async (payload: Record<string, unknown>): Promise<{ user: User }> => {
+    const current = readUser() ?? DEMO_USER;
+    const firstName = typeof payload.firstName === "string" ? payload.firstName : current.firstName;
+    const lastName = typeof payload.lastName === "string" ? payload.lastName : current.lastName;
+    const email = typeof payload.email === "string" ? payload.email : current.email;
+    const phone = typeof payload.phone === "string" ? payload.phone : current.phone;
+
+    return {
+      user: persistUser({
+        ...current,
+        firstName,
+        lastName,
+        name: [firstName, lastName].filter(Boolean).join(" ") || current.name,
+        email,
+        phone,
+        onboardingComplete: true,
+      }),
+    };
   },
 
   logout: async (): Promise<void> => {
-    localStorage.removeItem("logicorp-client-user");
+    localStorage.removeItem(USER_STORAGE_KEY);
     setAccessToken(null);
   },
 };
