@@ -2,9 +2,9 @@
  * Single source of truth for app theme.
  * No hardcoded colors elsewhere — use these tokens or CSS vars derived from them.
  *
- * Palette sampled directly from the Logicorp logo:
- *   primary = Vermilion Orange (#EF5C20)  - legacy primary brand color
- *   accent  = Deep Magenta     (#96286E)  — head dot / motion swoosh
+ * Palette aligned with the public Logicorp landing page:
+ *   primary = Logicorp Blue (#2563EB)
+ *   accent  = Cyan delivery highlight (#22D3EE)
  * Font: Plus Jakarta Sans
  */
 
@@ -63,42 +63,42 @@ export interface ColorPalette {
 /* ── Light palette ── */
 
 export const lightColors: ColorPalette = {
-  primary: "#EF5C20",
-  primaryHover: "#D04812",
-  primaryBg: "rgba(239, 92, 32, 0.08)",
-  primaryLight: "#FDE5D9",
+  primary: "#2563EB",
+  primaryHover: "#1D4ED8",
+  primaryBg: "rgba(37, 99, 235, 0.10)",
+  primaryLight: "#DBEAFE",
 
-  accent: "#96286E",
-  accentHover: "#7E1F5C",
-  accentBg: "rgba(150, 40, 110, 0.08)",
+  accent: "#22D3EE",
+  accentHover: "#2563EB",
+  accentBg: "rgba(34, 211, 238, 0.14)",
 
-  text: "#1A0F1A",
-  textSecondary: "#64556A",
-  textTertiary: "#9B8AA0",
+  text: "#0F172A",
+  textSecondary: "#475569",
+  textTertiary: "#64748B",
 
-  border: "#E8DEE6",
-  borderLight: "rgba(232, 222, 230, 0.6)",
+  border: "#D8E3F5",
+  borderLight: "rgba(191, 219, 254, 0.72)",
 
-  bg: "#FDFAFB",
+  bg: "#F7FAFF",
   bgElevated: "#FFFFFF",
 
-  heroDark: "#160B1A",
-  heroGradientEnd: "#2C1228",
+  heroDark: "#0F172A",
+  heroGradientEnd: "#1D4ED8",
 
-  loadingOverlay: "rgba(253, 250, 251, 0.92)",
+  loadingOverlay: "rgba(247, 250, 255, 0.92)",
 
-  skeletonFrom: "#F5EEF1",
-  skeletonVia: "#E8DEE6",
+  skeletonFrom: "#EAF1FF",
+  skeletonVia: "#DCE9FF",
 
-  heroLightStart: "#FFF8F4",
-  heroLightEnd: "#FFFFFF",
+  heroLightStart: "#EFF6FF",
+  heroLightEnd: "#ECFEFF",
 
-  heroDotColor: "rgba(239, 92, 32, 0.15)",
-  heroLightDotColor: "rgba(239, 92, 32, 0.04)",
+  heroDotColor: "rgba(96, 165, 250, 0.22)",
+  heroLightDotColor: "rgba(37, 99, 235, 0.055)",
 
-  surfaceMuted: "#FBF6F8",
+  surfaceMuted: "#F2F7FF",
 
-  primaryBgSolid: "#FEF0E6",
+  primaryBgSolid: "#EAF1FF",
 
   success: "#16A34A",
   successBg: "#DCFCE7",
@@ -106,45 +106,45 @@ export const lightColors: ColorPalette = {
   dangerBg: "#FEE2E2",
 };
 
-/* ── Dark palette (neutral-cool, GitHub-inspired) ── */
+/* ── Dark palette ── */
 
 export const darkColors: ColorPalette = {
-  primary: "#FF7A45",
-  primaryHover: "#FF9166",
-  primaryBg: "rgba(255, 122, 69, 0.14)",
-  primaryLight: "#3A1209",
+  primary: "#60A5FA",
+  primaryHover: "#93C5FD",
+  primaryBg: "rgba(96, 165, 250, 0.16)",
+  primaryLight: "#172554",
 
-  accent: "#D67BB0",
-  accentHover: "#E498C2",
-  accentBg: "rgba(214, 123, 176, 0.14)",
+  accent: "#22D3EE",
+  accentHover: "#67E8F9",
+  accentBg: "rgba(34, 211, 238, 0.16)",
 
-  text: "#F2E9EE",
-  textSecondary: "#A99CA5",
-  textTertiary: "#7B6F77",
+  text: "#F8FAFC",
+  textSecondary: "#CBD5E1",
+  textTertiary: "#94A3B8",
 
-  border: "#3A2A36",
-  borderLight: "rgba(58, 42, 54, 0.7)",
+  border: "#263B5E",
+  borderLight: "rgba(38, 59, 94, 0.7)",
 
-  bg: "#120A11",
-  bgElevated: "#1C121B",
+  bg: "#08111F",
+  bgElevated: "#0F1A2D",
 
-  heroDark: "#0A0610",
-  heroGradientEnd: "#1C121B",
+  heroDark: "#08111F",
+  heroGradientEnd: "#102A56",
 
-  loadingOverlay: "rgba(18, 10, 17, 0.92)",
+  loadingOverlay: "rgba(8, 17, 31, 0.92)",
 
-  skeletonFrom: "#1C121B",
-  skeletonVia: "#2A1B27",
+  skeletonFrom: "#0F1A2D",
+  skeletonVia: "#1E3A5F",
 
-  heroLightStart: "#120A11",
-  heroLightEnd: "#1C121B",
+  heroLightStart: "#08111F",
+  heroLightEnd: "#0F1A2D",
 
-  heroDotColor: "rgba(255, 122, 69, 0.2)",
-  heroLightDotColor: "rgba(255, 122, 69, 0.06)",
+  heroDotColor: "rgba(96, 165, 250, 0.22)",
+  heroLightDotColor: "rgba(96, 165, 250, 0.08)",
 
-  surfaceMuted: "#2A1B27",
+  surfaceMuted: "#17233A",
 
-  primaryBgSolid: "#2A0F08",
+  primaryBgSolid: "#172554",
 
   success: "#4ADE80",
   successBg: "rgba(74, 222, 128, 0.14)",

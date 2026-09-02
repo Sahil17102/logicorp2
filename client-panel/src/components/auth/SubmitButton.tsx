@@ -15,7 +15,7 @@ export function SubmitButton({ loading, label, disabled = false }: SubmitButtonP
       disabled={isDisabled}
       whileHover={{ scale: loading ? 1 : 1.01 }}
       whileTap={{ scale: loading ? 1 : 0.98 }}
-      className="w-full inline-flex items-center justify-center gap-2 h-12 text-sm font-semibold text-white bg-gradient-to-r from-accent to-accent-hover rounded-xl transition-all shadow-lg shadow-orange-500/20 hover:shadow-orange-500/35 disabled:opacity-60 disabled:cursor-not-allowed"
+      className="w-full inline-flex items-center justify-center gap-2 h-12 text-sm font-semibold text-white bg-gradient-to-r from-primary to-primary-hover rounded-xl transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/35 disabled:opacity-60 disabled:cursor-not-allowed"
     >
       {loading ? (
         <>
