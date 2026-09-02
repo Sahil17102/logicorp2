@@ -33,8 +33,8 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { login, user } = useAuth();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("admin@logicorp.in");
+  const [password, setPassword] = useState("admin123");
   const [showPassword, setShowPassword] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
@@ -154,7 +154,8 @@ export default function LoginPage() {
                   onFocus={() => setFocusedField("email")}
                   onBlur={() => setFocusedField(null)}
                   placeholder="admin@logicorp.in"
-                  autoComplete="username"
+                  autoComplete="off"
+                  name="logicorp-admin-email"
                   autoFocus
                   required
                   className="flex-1 h-full pr-3 text-sm font-medium text-foreground bg-transparent border-none outline-none placeholder:text-tertiary"
@@ -183,7 +184,8 @@ export default function LoginPage() {
                   onFocus={() => setFocusedField("password")}
                   onBlur={() => setFocusedField(null)}
                   placeholder="Password"
-                  autoComplete="current-password"
+                  autoComplete="new-password"
+                  name="logicorp-admin-password"
                   required
                   className="flex-1 h-full text-sm font-medium text-foreground bg-transparent border-none outline-none placeholder:text-tertiary"
                 />
