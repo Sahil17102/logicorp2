@@ -1,5 +1,6 @@
 import type { User } from "@/contexts/AuthContext";
 import { setAccessToken } from "./api";
+import { isCourierApiConfigured, loginCourierApi, shouldUseCourierApi } from "./courierApi";
 
 const DEMO_USER: User = {
   id: "demo-client-user",
@@ -55,6 +56,9 @@ export const authApi = {
     password: string;
   }): Promise<{ user: User }> => {
     const identifier = params.identifier.trim();
+    if (shouldUseCourierApi() && !isCourierApiConfigured()) {
+      await loginCourierApi(identifier, params.password);
+    }
     const user = {
       ...DEMO_USER,
       email: identifier.includes("@") ? identifier : DEMO_USER.email,
