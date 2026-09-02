@@ -3,3 +3,6 @@ dist/
 *.png
 .DS_Store
 *.local
+*.sentry-build-plugin
+*.tsbuildinfo
+.tmp_*/
