@@ -1,21 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { AppLayout } from "./components/common";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { OnboardingRoute } from "./components/auth/OnboardingRoute";
 import { DashboardLayout } from "./components/dashboard/DashboardLayout";
-import { PlatformPage } from "./pages/landing/PlatformPage";
-import { SalesChannelsPage } from "./pages/landing/SalesChannelsPage";
-import { CourierPartnersPage } from "./pages/landing/CourierPartnersPage";
-import { RateCalculatorPage } from "./pages/landing/RateCalculatorPage";
-import { WeightEstimatorPage } from "./pages/landing/WeightEstimatorPage";
-import { TrackShipmentPage } from "./pages/landing/TrackShipmentPage";
-import { BlogsPage } from "./pages/landing/BlogsPage";
-import { BlogDetailPage } from "./pages/landing/BlogDetailPage";
-import { AboutPage } from "./pages/landing/AboutPage";
-import { CareersPage } from "./pages/landing/CareersPage";
-import { ContactPage } from "./pages/landing/ContactPage";
-import { PartnersPage } from "./pages/landing/PartnersPage";
-import { PrivacyPage } from "./pages/landing/PrivacyPage";
 import { SignUpPage } from "./pages/SignUpPage";
 import { SellerHomePage } from "./pages/SellerHomePage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -51,6 +37,7 @@ function App() {
   return (
     <Routes>
       {/* Auth */}
+      <Route path="/" element={<SignUpPage />} />
       <Route path="/login" element={<SignUpPage />} />
       <Route path="/signup" element={<SignUpPage />} />
       <Route
@@ -61,24 +48,6 @@ function App() {
           </OnboardingRoute>
         }
       />
-
-      {/* Public marketing site */}
-      <Route path="/" element={<AppLayout />}>
-        <Route index element={<Navigate to="/signup" replace />} />
-        <Route path="platform" element={<PlatformPage />} />
-        <Route path="integrations/sales-channels" element={<SalesChannelsPage />} />
-        <Route path="integrations/courier-partners" element={<CourierPartnersPage />} />
-        <Route path="resources/rate-calculator" element={<RateCalculatorPage />} />
-        <Route path="resources/weight-estimator" element={<WeightEstimatorPage />} />
-        <Route path="track" element={<TrackShipmentPage />} />
-        <Route path="blogs" element={<BlogsPage />} />
-        <Route path="blogs/:slug" element={<BlogDetailPage />} />
-        <Route path="about" element={<AboutPage />} />
-        <Route path="careers" element={<CareersPage />} />
-        <Route path="contact" element={<ContactPage />} />
-        <Route path="partners" element={<PartnersPage />} />
-        <Route path="privacy" element={<PrivacyPage />} />
-      </Route>
 
       {/* Protected app — no /dashboard prefix */}
       <Route
@@ -128,6 +97,8 @@ function App() {
         <Route path="/support" element={<SupportListPage />} />
         <Route path="/support/:id" element={<SupportDetailPage />} />
       </Route>
+
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }
