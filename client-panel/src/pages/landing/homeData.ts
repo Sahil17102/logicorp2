@@ -141,7 +141,7 @@ export const testimonials = [
     name: "Priya Sharma",
     role: "Founder, LoomCraft",
     quote:
-      "Dreamz Services cut our shipping costs by 30% and brought all our courier partners under one roof. The dashboard is a game changer.",
+      "Logicorp cut our shipping costs by 30% and brought all our courier partners under one roof. The dashboard is a game changer.",
     stars: 5,
   },
   {
@@ -155,16 +155,16 @@ export const testimonials = [
     name: "Ananya Desai",
     role: "E-commerce Manager, StyleNest",
     quote:
-      "The smart routing feature alone saved us lakhs. Dreamz Services picks the fastest, cheapest courier for every order automatically.",
+      "The smart routing feature alone saved us lakhs. Logicorp picks the fastest, cheapest courier for every order automatically.",
     stars: 5,
   },
 ];
 
 export const faqs = [
   {
-    question: "What services does Dreamz Services provide?",
+    question: "What services does Logicorp provide?",
     answer:
-      "Dreamz Services provides comprehensive courier & logistics services including B2B and B2C shipping solutions, express delivery, warehousing, distribution, cargo transportation, and reverse logistics. We offer domestic and international shipping services tailored to meet your business needs.",
+      "Logicorp provides comprehensive courier & logistics services including B2B and B2C shipping solutions, express delivery, warehousing, distribution, cargo transportation, and reverse logistics. We offer domestic and international shipping services tailored to meet your business needs.",
   },
   {
     question: "How can I track my shipment?",
@@ -194,7 +194,7 @@ export const faqs = [
   {
     question: "How can I contact customer support?",
     answer:
-      "Our customer support team is available 24/7 to assist you. You can reach us at +91 87500 47039, email us at cs@dreamzservices.in, or chat with us on WhatsApp. Our office hours are 9:00 AM to 6:00 PM, Monday to Friday.",
+      "Our customer support team is available 24/7 to assist you. You can reach us at +91 87500 47039, email us at cs@logicorp.in, or chat with us on WhatsApp. Our office hours are 9:00 AM to 6:00 PM, Monday to Friday.",
   },
   {
     question: "What are the packaging guidelines?",

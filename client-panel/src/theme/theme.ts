@@ -2,8 +2,8 @@
  * Single source of truth for app theme.
  * No hardcoded colors elsewhere — use these tokens or CSS vars derived from them.
  *
- * Palette sampled directly from the Dreamz Services logo:
- *   primary = Vermilion Orange (#EF5C20)  — "DREAMZ" wordmark
+ * Palette sampled directly from the Logicorp logo:
+ *   primary = Vermilion Orange (#EF5C20)  - legacy primary brand color
  *   accent  = Deep Magenta     (#96286E)  — head dot / motion swoosh
  * Font: Plus Jakarta Sans
  */

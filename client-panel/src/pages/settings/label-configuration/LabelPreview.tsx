@@ -28,7 +28,7 @@ const SAMPLE = {
     { name: "Silk Dupatta", hsn: "5007", sku: "DPT-SLK-01", qty: 1, total: 799 },
   ],
   pickup: {
-    name: "Dreamz Services Warehouse",
+    name: "Logicorp Warehouse",
     address: "Plot 12, DSIDC Complex",
     city: "New Delhi",
     state: "Delhi",
@@ -37,7 +37,7 @@ const SAMPLE = {
     gst: "07AABCU9603R1ZP",
   },
   rto: {
-    name: "Dreamz Services Returns",
+    name: "Logicorp Returns",
     address: "Plot 12, DSIDC Complex",
     city: "New Delhi",
     state: "Delhi",
@@ -61,7 +61,7 @@ export default function LabelPreview({ settings }: LabelPreviewProps) {
       {/* Card mimicking the 4×6 inch shipping label PDF */}
       <div className="bg-white border border-border-light rounded-xl shadow-sm overflow-hidden">
         <div className="flex flex-col text-[10px] leading-tight text-slate-900 p-4">
-          {/* Header: seller logo (left) + dreamzservices wordmark (right) */}
+          {/* Header: seller logo (left) + logicorpservices wordmark (right) */}
           <div className="flex min-h-[40px] items-center justify-between gap-3">
             {s.showLogo !== false && s.logoUrl ? (
               <img
@@ -75,7 +75,7 @@ export default function LabelPreview({ settings }: LabelPreviewProps) {
             {/* Drawn as bold black type, matching the PDF: the brand artwork's
                 orange/purple washes out to white on 1-bit thermal printers. */}
             <div className="shrink-0 text-right leading-none text-slate-900">
-              <div className="text-[17px] font-bold tracking-[0.02em]">DREAMZ</div>
+              <div className="text-[17px] font-bold tracking-[0.02em]">LOGICORP</div>
               <div className="mt-[3px] text-[6.5px] font-bold tracking-[0.42em]">SERVICES</div>
             </div>
           </div>

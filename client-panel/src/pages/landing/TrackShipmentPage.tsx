@@ -65,7 +65,7 @@ const faqs = [
   {
     question: "Can I track multiple shipments at once?",
     answer:
-      "Yes! On the Dreamz Services dashboard, you can track all your shipments in one view with real-time status, filters, and bulk actions. Sign up for free to access.",
+      "Yes! On the Logicorp dashboard, you can track all your shipments in one view with real-time status, filters, and bulk actions. Sign up for free to access.",
   },
 ];
 
@@ -399,7 +399,7 @@ export function TrackShipmentPage() {
             shipments in one place?
           </>
         }
-        subtitle="Sign up for the Dreamz Services dashboard and get a unified tracking view for every order, every courier."
+        subtitle="Sign up for the Logicorp dashboard and get a unified tracking view for every order, every courier."
         primaryCta={{ label: "Start Free Trial", href: "/signup" }}
         secondaryCta={{ label: "Explore Platform", href: "/platform" }}
       />

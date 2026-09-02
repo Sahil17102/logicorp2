@@ -8,7 +8,7 @@ import {
 } from "react";
 import { injectThemeVars, type ThemeMode } from "@/theme";
 
-const STORAGE_KEY = "dreamz-admin-theme";
+const STORAGE_KEY = "logicorp-admin-theme";
 
 interface ThemeContextType {
   mode: ThemeMode;

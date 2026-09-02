@@ -94,18 +94,18 @@ export function Footer() {
           <div className="sm:col-span-2">
             <AppLogo textClassName="text-white" className="mb-5" />
             <p className="text-sm text-white/50 leading-relaxed max-w-xs mb-6">
-              A leading courier aggregator company that delivers customized
-              supply chain solutions. ISO (9001:2015) certified.
+              Logicorp Logistics Pvt. Ltd. connects courier partners, live rates,
+              tracking, NDR, RTO, and COD workflows in one shipping workspace.
             </p>
 
             {/* Contact info */}
             <div className="space-y-3 mb-6">
               <a
-                href="mailto:cs@dreamzservices.in"
+                href="mailto:cs@logicorp.in"
                 className="flex items-center gap-2.5 text-sm text-white/50 hover:text-white transition-colors no-underline"
               >
                 <Mail className="w-4 h-4 text-primary shrink-0" />
-                cs@dreamzservices.in
+                cs@logicorp.in
               </a>
               <a
                 href="tel:+918750047039"
@@ -176,7 +176,7 @@ export function Footer() {
         {/* ─── Divider + bottom bar ─── */}
         <div className="border-t border-white/10 py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-white/40">
-            &copy; {new Date().getFullYear()} Dreamz Services. All rights reserved.
+            &copy; {new Date().getFullYear()} Logicorp Logistics Pvt. Ltd. All rights reserved.
           </p>
           <p className="text-xs text-white/30">
             Made with care in India

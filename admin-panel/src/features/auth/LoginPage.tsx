@@ -153,7 +153,7 @@ export default function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   onFocus={() => setFocusedField("email")}
                   onBlur={() => setFocusedField(null)}
-                  placeholder="admin@dreamzservices.in"
+                  placeholder="admin@logicorp.in"
                   autoComplete="username"
                   autoFocus
                   required

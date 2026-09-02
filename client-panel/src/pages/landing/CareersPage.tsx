@@ -29,7 +29,7 @@ const perks = [
   {
     icon: <TrendingUp className="w-6 h-6" />,
     title: "Grow fast",
-    body: "We're early-stage. The people who join now will lead teams as Dreamz scales.",
+    body: "We're early-stage. The people who join now will lead teams as Logicorp scales.",
   },
   {
     icon: <Globe className="w-6 h-6" />,
@@ -87,7 +87,7 @@ const roles = [
 ];
 
 const hiring = [
-  { n: "1", title: "Apply", body: "Send your CV and a short note on why Dreamz." },
+  { n: "1", title: "Apply", body: "Send your CV and a short note on why Logicorp." },
   { n: "2", title: "Intro call", body: "A 30-minute chat with the hiring manager." },
   { n: "3", title: "Task / Interview", body: "A small practical task or technical discussion." },
   { n: "4", title: "Offer", body: "Decision within 5 working days. No ghosting." },
@@ -112,7 +112,7 @@ export function CareersPage() {
         }
         subtitle="We're a small, focused team solving real problems for Indian sellers. If that excites you, we want to hear from you."
         primaryCta={{ label: "View Open Roles", href: "#roles" }}
-        secondaryCta={{ label: "Email Us", href: "mailto:careers@dreamzservices.in" }}
+        secondaryCta={{ label: "Email Us", href: "mailto:careers@logicorp.in" }}
       />
 
       {/* ━━━ WHY JOIN ━━━ */}
@@ -180,7 +180,7 @@ export function CareersPage() {
                   </div>
                 </div>
                 <a
-                  href="mailto:careers@dreamzservices.in"
+                  href="mailto:careers@logicorp.in"
                   className="shrink-0 inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary-hover rounded-lg transition-colors no-underline"
                 >
                   Apply now
@@ -192,8 +192,8 @@ export function CareersPage() {
 
           <p className="text-center text-sm text-muted mt-8">
             Don't see your role? Email us at{" "}
-            <a href="mailto:careers@dreamzservices.in" className="text-primary font-semibold underline underline-offset-2">
-              careers@dreamzservices.in
+            <a href="mailto:careers@logicorp.in" className="text-primary font-semibold underline underline-offset-2">
+              careers@logicorp.in
             </a>
           </p>
         </Container>
@@ -239,8 +239,8 @@ export function CareersPage() {
           </>
         }
         subtitle="Join us in Delhi — or remotely — and help shape the future of Indian ecommerce shipping."
-        primaryCta={{ label: "Email Your CV", href: "mailto:careers@dreamzservices.in" }}
-        secondaryCta={{ label: "About Dreamz", href: "/about" }}
+        primaryCta={{ label: "Email Your CV", href: "mailto:careers@logicorp.in" }}
+        secondaryCta={{ label: "About Logicorp", href: "/about" }}
       />
     </>
   );

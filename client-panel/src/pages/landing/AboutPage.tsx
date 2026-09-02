@@ -45,7 +45,7 @@ const timeline: { icon: typeof Clock; grad: GradientKey; year: string; body: str
     icon: Users,
     grad: "green",
     year: "Today — 1,200+ sellers, 25+ couriers",
-    body: "₹40 lakh saved every month by sellers shipping smarter with Dreamz.",
+    body: "₹40 lakh saved every month by sellers shipping smarter with Logicorp.",
   },
 ];
 
@@ -98,7 +98,7 @@ export function AboutPage() {
             Built for India.
           </>
         }
-        subtitle="Dreamz Services was founded on one belief — Indian ecommerce businesses deserve smarter shipping tools, not just cheaper courier rates."
+        subtitle="Logicorp was founded on one belief — Indian ecommerce businesses deserve smarter shipping tools, not just cheaper courier rates."
       />
 
       <StatBand stats={stats} />
@@ -119,7 +119,7 @@ export function AboutPage() {
               our RTO jump this month?
             </p>
             <p className="mt-4 text-[15px] leading-7" style={{ color: SLATE }}>
-              There was no single platform that answered all of it. So we built one. Dreamz started
+              There was no single platform that answered all of it. So we built one. Logicorp started
               as a rate comparison tool and grew into a full shipping operating system — comparison,
               booking, tracking, COD remittance, and business intelligence in one place.
             </p>
@@ -279,7 +279,7 @@ export function AboutPage() {
       <CtaBand
         title="Built in Delhi."
         highlight="Made for India."
-        subtitle="Join 1,200+ Indian D2C brands shipping smarter with Dreamz Services. Set up your account in under 5 minutes."
+        subtitle="Join 1,200+ Indian D2C brands shipping smarter with Logicorp. Set up your account in under 5 minutes."
         buttons={
           <>
             <BtnPrimary href="/careers">Join our team</BtnPrimary>

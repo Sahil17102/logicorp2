@@ -14,7 +14,7 @@ const sections = [
     id: "info",
     title: "1. Information we collect",
     paras: [
-      "When you register on Dreamz Services, we collect information you provide directly — including your name, email address, mobile number, company name, and GST details where applicable.",
+      "When you register on Logicorp, we collect information you provide directly — including your name, email address, mobile number, company name, and GST details where applicable.",
       "We also collect information automatically as you use our platform — such as shipment data, order details, carrier interactions, IP address, device information, and usage patterns within the dashboard.",
     ],
   },
@@ -22,7 +22,7 @@ const sections = [
     id: "use",
     title: "2. How we use information",
     paras: [
-      "We use your information to provide and improve Dreamz's services — including rate comparison, shipment booking, tracking, COD remittance, recommendations, and billing.",
+      "We use your information to provide and improve Logicorp's services — including rate comparison, shipment booking, tracking, COD remittance, recommendations, and billing.",
       "We also use aggregated, anonymised data to improve our platform and build better features. We will never sell your personal information to third parties.",
     ],
   },
@@ -30,7 +30,7 @@ const sections = [
     id: "cookies",
     title: "3. Cookies & tracking",
     paras: [
-      "Dreamz uses essential cookies to keep you logged in and maintain your session. We also use analytics cookies to understand how the platform is used.",
+      "Logicorp uses essential cookies to keep you logged in and maintain your session. We also use analytics cookies to understand how the platform is used.",
       "You can disable non-essential cookies via your browser settings at any time. Disabling essential cookies may affect your ability to use the platform.",
     ],
   },
@@ -47,7 +47,7 @@ const sections = [
     title: "5. Your rights",
     paras: [
       "You have the right to access, correct, or delete any personal information we hold about you. You can request an export of your data or ask us to erase your account at any time.",
-      "To exercise any of these rights, email us at privacy@dreamzservices.in. We will respond within 7 business days.",
+      "To exercise any of these rights, email us at privacy@logicorp.in. We will respond within 7 business days.",
     ],
   },
   {
@@ -62,7 +62,7 @@ const sections = [
     id: "contact",
     title: "7. Contact us",
     paras: [
-      "For any privacy-related queries, please contact our Data Protection Officer at privacy@dreamzservices.in.",
+      "For any privacy-related queries, please contact our Data Protection Officer at privacy@logicorp.in.",
     ],
   },
 ];
@@ -97,7 +97,7 @@ export function PrivacyPage() {
         badge="Legal"
         variant="light"
         title="Privacy Policy"
-        subtitle={`Last updated: ${LAST_UPDATED} · Dreamz Services`}
+        subtitle={`Last updated: ${LAST_UPDATED} · Logicorp`}
       />
 
       {/* ━━━ CONTENT ━━━ */}
@@ -148,15 +148,15 @@ export function PrivacyPage() {
                   ))}
                   {s.id === "contact" && (
                     <div className="mt-4 inline-flex flex-col gap-1 bg-white border border-border-light rounded-xl p-5">
-                      <span className="text-sm font-semibold text-foreground">Dreamz Services</span>
+                      <span className="text-sm font-semibold text-foreground">Logicorp</span>
                       <span className="text-sm text-muted">
                         Plot No. 55A, Block C, Bharat Vihar, Kakrola, Delhi 110078
                       </span>
                       <a
-                        href="mailto:privacy@dreamzservices.in"
+                        href="mailto:privacy@logicorp.in"
                         className="text-sm text-primary font-medium underline underline-offset-2"
                       >
-                        privacy@dreamzservices.in
+                        privacy@logicorp.in
                       </a>
                     </div>
                   )}
@@ -170,8 +170,8 @@ export function PrivacyPage() {
       {/* ━━━ CTA ━━━ */}
       <CtaBanner
         title="Questions about your data?"
-        subtitle="Email us at privacy@dreamzservices.in — we respond within 7 business days."
-        primaryCta={{ label: "Contact Privacy Team", href: "mailto:privacy@dreamzservices.in" }}
+        subtitle="Email us at privacy@logicorp.in — we respond within 7 business days."
+        primaryCta={{ label: "Contact Privacy Team", href: "mailto:privacy@logicorp.in" }}
         secondaryCta={{ label: "Back to Home", href: "/" }}
       />
     </>

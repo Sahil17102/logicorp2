@@ -167,6 +167,8 @@ const plans = [
   },
 ];
 
+const CLIENT_PANEL_URL = 'https://logicorp2-2.onrender.com';
+
 function Logo({ compact = false }) {
   return (
     <div className={`logo ${compact ? 'logo-compact' : ''}`}>
@@ -283,10 +285,10 @@ function Header({ theme, activeSection, onThemeToggle }) {
           <button className="icon-button" aria-label="Switch theme" onClick={onThemeToggle}>
             <ThemeIcon size={18} />
           </button>
-          <a className="signin" href="#">
+          <a className="signin" href={CLIENT_PANEL_URL}>
             Sign in
           </a>
-          <a className="button primary small" href="#cta">
+          <a className="button primary small" href={CLIENT_PANEL_URL}>
             Get started <ArrowRight size={18} />
           </a>
         </div>
@@ -409,7 +411,7 @@ function Hero() {
           panels.
         </p>
         <div className="button-row">
-          <a className="button primary" href="#cta">
+          <a className="button primary" href={CLIENT_PANEL_URL}>
             Start shipping free <ArrowRight size={19} />
           </a>
           <a className="button secondary" href="#calculator">
@@ -707,7 +709,7 @@ function Cta() {
           — no card required.
         </p>
         <div className="button-row center">
-          <a className="button primary" href="#">
+          <a className="button primary" href={CLIENT_PANEL_URL}>
             Get started free <ArrowRight size={19} />
           </a>
           <a className="button secondary" href="#">

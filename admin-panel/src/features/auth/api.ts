@@ -3,7 +3,7 @@ import type { User } from "./types";
 
 const DEMO_ADMIN: User = {
   id: "demo-admin-user",
-  email: "admin@dreamzservices.in",
+  email: "admin@logicorp.in",
   phone: null,
   name: "Demo Admin",
   firstName: "Demo",
@@ -18,7 +18,7 @@ const DEMO_ADMIN: User = {
 };
 
 function readAdmin(): User | null {
-  const raw = localStorage.getItem("dreamz-admin-user");
+  const raw = localStorage.getItem("logicorp-admin-user");
   if (!raw) return null;
   try {
     return JSON.parse(raw) as User;
@@ -28,7 +28,7 @@ function readAdmin(): User | null {
 }
 
 function persistAdmin(user: User): User {
-  localStorage.setItem("dreamz-admin-user", JSON.stringify(user));
+  localStorage.setItem("logicorp-admin-user", JSON.stringify(user));
   setAccessToken("static-admin-token");
   return user;
 }
@@ -52,7 +52,7 @@ export const authApi = {
   },
 
   logout: async (): Promise<void> => {
-    localStorage.removeItem("dreamz-admin-user");
+    localStorage.removeItem("logicorp-admin-user");
     setAccessToken(null);
   },
 

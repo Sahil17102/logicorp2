@@ -3,7 +3,7 @@ import { setAccessToken } from "./api";
 
 const DEMO_USER: User = {
   id: "demo-client-user",
-  email: "client@dreamzservices.in",
+  email: "client@logicorp.in",
   phone: null,
   name: "Demo Seller",
   firstName: "Demo",
@@ -17,7 +17,7 @@ const DEMO_USER: User = {
 };
 
 function readUser(): User | null {
-  const raw = localStorage.getItem("dreamz-client-user");
+  const raw = localStorage.getItem("logicorp-client-user");
   if (!raw) return null;
   try {
     return JSON.parse(raw) as User;
@@ -27,7 +27,7 @@ function readUser(): User | null {
 }
 
 function persistUser(user: User): User {
-  localStorage.setItem("dreamz-client-user", JSON.stringify(user));
+  localStorage.setItem("logicorp-client-user", JSON.stringify(user));
   setAccessToken("static-client-token");
   return user;
 }
@@ -74,7 +74,7 @@ export const authApi = {
   },
 
   logout: async (): Promise<void> => {
-    localStorage.removeItem("dreamz-client-user");
+    localStorage.removeItem("logicorp-client-user");
     setAccessToken(null);
   },
 };

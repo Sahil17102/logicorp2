@@ -6,7 +6,7 @@ import { Container } from "@/components/common";
 import { TestimonialsSection } from "./TestimonialsSection";
 
 /* ─────────────────────────────────────────────────────────────
-   Dreamz Services landing — illustrated playful direction.
+   Logicorp landing — illustrated playful direction.
    Cream background, sticker cards with thick borders + light
    rotations, hand-drawn-style SVG illustrations, big rounded
    typography. Orange dominant, purple accents.
@@ -28,7 +28,7 @@ const SOLUTIONS = [
   {
     icon: Package,
     title: "Bulk orders, one click",
-    body: "Upload a sheet, push a button. Dreamz queues the labels, prints the manifests, and books the pickup before your tea cools.",
+    body: "Upload a sheet, push a button. Logicorp queues the labels, prints the manifests, and books the pickup before your tea cools.",
     accent: ORANGE,
     rotate: -1,
   },
@@ -94,7 +94,7 @@ const FAQS = [
   },
   {
     q: "Which couriers do you support?",
-    a: "Delhivery, Bluedart, Ekart, XpressBees, DTDC, Shadowfax, Ecom Express, India Post, and a growing list. If a courier serves the pincode, Dreamz can usually book it.",
+    a: "Delhivery, Bluedart, Ekart, XpressBees, DTDC, Shadowfax, Ecom Express, India Post, and a growing list. If a courier serves the pincode, Logicorp can usually book it.",
   },
   {
     q: "How do you make money if shipping rates are the same?",
@@ -560,11 +560,11 @@ export function HomePage() {
               <p className="mt-4 text-base" style={{ color: "#3A2E26" }}>
                 Don't see yours? Email{" "}
                 <a
-                  href="mailto:cs@dreamzservices.in"
+                  href="mailto:cs@logicorp.in"
                   className="font-bold underline decoration-2 underline-offset-4"
                   style={{ color: ORANGE }}
                 >
-                  cs@dreamzservices.in
+                  cs@logicorp.in
                 </a>{" "}
                 — we read every one.
               </p>

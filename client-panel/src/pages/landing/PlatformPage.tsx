@@ -188,7 +188,7 @@ export function PlatformPage() {
         <Container maxWidth="xl">
           <motion.div {...scrollFadeUp} className="text-center mb-12 sm:mb-16">
             <span className="inline-block px-3 py-1 text-xs font-semibold text-primary bg-primary-bg rounded-full mb-4">
-              Why Choose Dreamz Services
+              Why Choose Logicorp
             </span>
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground mb-4">
               Everything you need to{" "}
@@ -323,7 +323,7 @@ export function PlatformPage() {
             your shipping?
           </>
         }
-        subtitle="Join 1.5 Lakh+ businesses already shipping smarter with Dreamz Services. Set up your account in under 5 minutes."
+        subtitle="Join 1.5 Lakh+ businesses already shipping smarter with Logicorp. Set up your account in under 5 minutes."
         primaryCta={{ label: "Start Shipping Free", href: "/signup" }}
         secondaryCta={{ label: "Talk to Sales", href: "/contact" }}
       />

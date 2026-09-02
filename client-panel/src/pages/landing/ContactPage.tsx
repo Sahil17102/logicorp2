@@ -20,25 +20,25 @@ const channels = [
     icon: <Phone className="w-5 h-5" />,
     tint: "bg-primary-bg text-primary",
     title: "Talk to sales",
-    body: "Interested in Dreamz for your business? Our team will walk you through plans, pricing, and setup.",
-    contact: "sales@dreamzservices.in",
-    href: "mailto:sales@dreamzservices.in",
+    body: "Interested in Logicorp for your business? Our team will walk you through plans, pricing, and setup.",
+    contact: "sales@logicorp.in",
+    href: "mailto:sales@logicorp.in",
   },
   {
     icon: <HelpCircle className="w-5 h-5" />,
     tint: "bg-accent-bg text-accent",
     title: "Seller support",
-    body: "Already shipping with Dreamz? Raise a ticket or chat with our support team — Mon–Sat, 9am–7pm IST.",
-    contact: "cs@dreamzservices.in",
-    href: "mailto:cs@dreamzservices.in",
+    body: "Already shipping with Logicorp? Raise a ticket or chat with our support team — Mon–Sat, 9am–7pm IST.",
+    contact: "cs@logicorp.in",
+    href: "mailto:cs@logicorp.in",
   },
   {
     icon: <Users className="w-5 h-5" />,
     tint: "bg-emerald-50 text-emerald-600",
     title: "Partnerships",
     body: "Courier, technology, or channel partnerships — let's build something together.",
-    contact: "partners@dreamzservices.in",
-    href: "mailto:partners@dreamzservices.in",
+    contact: "partners@logicorp.in",
+    href: "mailto:partners@logicorp.in",
   },
   {
     icon: <Phone className="w-5 h-5" />,
@@ -130,7 +130,7 @@ export function ContactPage() {
                 <div>
                   <div className="text-base font-semibold text-foreground mb-1">Corporate office</div>
                   <div className="text-sm text-muted leading-relaxed">
-                    Dreamz Services
+                    Logicorp
                     <br />
                     Plot No. 55A, Ground Floor, Kh No. 31/12, Block C,
                     <br />
@@ -228,7 +228,7 @@ export function ContactPage() {
             ship it yourself?
           </>
         }
-        subtitle="Set up your Dreamz account in under 5 minutes — no call required. Our team is here the moment you need a hand."
+        subtitle="Set up your Logicorp account in under 5 minutes — no call required. Our team is here the moment you need a hand."
         primaryCta={{ label: "Start Shipping Free", href: "/signup" }}
         secondaryCta={{ label: "Explore the Platform", href: "/platform" }}
       />
