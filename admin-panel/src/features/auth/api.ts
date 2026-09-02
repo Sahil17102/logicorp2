@@ -1,4 +1,5 @@
 import { setAccessToken } from "@/lib/api";
+import { seedAdmin, STATIC_ADMIN_KEY } from "@/lib/staticSeeds";
 import type { User } from "./types";
 
 const DEMO_ADMIN: User = {
@@ -18,17 +19,17 @@ const DEMO_ADMIN: User = {
 };
 
 function readAdmin(): User | null {
-  const raw = localStorage.getItem("logicorp-admin-user");
+  const raw = localStorage.getItem(STATIC_ADMIN_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as User;
   } catch {
-    return DEMO_ADMIN;
+    return null;
   }
 }
 
 function persistAdmin(user: User): User {
-  localStorage.setItem("logicorp-admin-user", JSON.stringify(user));
+  localStorage.setItem(STATIC_ADMIN_KEY, JSON.stringify(user));
   setAccessToken("static-admin-token");
   return user;
 }
@@ -44,15 +45,16 @@ export const authApi = {
     email: string;
     password: string;
   }): Promise<{ user: User }> => {
+    const seededAdmin = seedAdmin();
     const user = {
-      ...DEMO_ADMIN,
-      email: params.email.trim() || DEMO_ADMIN.email,
+      ...seededAdmin,
+      email: params.email.trim() || seededAdmin.email || DEMO_ADMIN.email,
     };
     return { user: persistAdmin(user) };
   },
 
   logout: async (): Promise<void> => {
-    localStorage.removeItem("logicorp-admin-user");
+    localStorage.removeItem(STATIC_ADMIN_KEY);
     setAccessToken(null);
   },
 

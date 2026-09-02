@@ -8,6 +8,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import App from "./App";
 import AppSpinner from "./components/common/AppSpinner";
+import { ensureStaticSeeds } from "./lib/staticSeeds";
 import { getAntdTheme, injectThemeVars } from "./theme";
 import "./index.css";
 
@@ -17,6 +18,7 @@ const initialMode = savedTheme === "dark" || savedTheme === "light"
   ? savedTheme
   : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 injectThemeVars(initialMode);
+ensureStaticSeeds();
 
 // Replace Ant Design's default dotted spinner globally
 Spin.setDefaultIndicator(<AppSpinner />);
