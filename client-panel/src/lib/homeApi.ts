@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { shouldUseStaticClientData } from "./staticMode";
 
 export interface QuickStats {
   ordersToday: number;
@@ -33,7 +34,26 @@ export interface SellerHomeData {
 
 export const homeApi = {
   get: async (): Promise<SellerHomeData> => {
-    const { data } = await api.get("/dashboard/home");
-    return data as SellerHomeData;
+    const emptyHome: SellerHomeData = {
+      quickStats: {
+        ordersToday: 0,
+        inTransit: 0,
+        ndrPending: 0,
+        rtoPending: 0,
+      },
+      wallet: { balance: 0 },
+      codPending: { amount: 0, count: 0 },
+      statusDistribution: [],
+      recentOrders: [],
+    };
+
+    if (shouldUseStaticClientData()) return emptyHome;
+
+    try {
+      const { data } = await api.get("/dashboard/home");
+      return data as SellerHomeData;
+    } catch {
+      return emptyHome;
+    }
   },
 };
