@@ -1,3 +1,4 @@
+import axios from "axios";
 import { api } from "./api";
 import { downloadBlob } from "./utils";
 import type { Order, CreateOrderPayload, TrackingEvent } from "./ordersTypes";
@@ -419,10 +420,37 @@ function isNetworkError(err: unknown): boolean {
   return err instanceof Error && err.message.toLowerCase().includes("network");
 }
 
+function isApiUnavailableError(err: unknown): boolean {
+  const status = typeof (err as { status?: unknown })?.status === "number"
+    ? (err as { status: number }).status
+    : undefined;
+  const message = err instanceof Error ? err.message.toLowerCase() : "";
+  return isNetworkError(err) || status === 404 || status === 405 || message.includes("not reachable");
+}
+
 function apiServerUnavailableError(): Error {
   return new Error(
-    "Logicorp API server is not reachable. Deploy the logicorp-api Render service from render.yaml or set VITE_COURIER_EMAIL and VITE_COURIER_PASSWORD, then redeploy.",
+    "Logicorp API server is not reachable. Deploy the Render web service from render.yaml and set TEAMPAFEX_EMAIL and TEAMPAFEX_PASSWORD there, then redeploy.",
   );
+}
+
+async function createSameOriginApiOrder(data: CreateOrderPayload): Promise<Order | null> {
+  if (typeof window === "undefined") return null;
+
+  const sameOriginApi = `${window.location.origin.replace(/\/+$/, "")}/api`;
+  const configuredApi = String(api.defaults.baseURL || "").replace(/\/+$/, "");
+  if (sameOriginApi === configuredApi) return null;
+
+  try {
+    const response = await axios.post<{ order?: Order }>(`${sameOriginApi}/orders`, data, {
+      timeout: 60_000,
+      headers: { "Content-Type": "application/json" },
+      withCredentials: true,
+    });
+    return response.data?.order ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function mapProviderOrder(raw: CourierRawOrder): Order {
@@ -525,7 +553,7 @@ export const ordersApi = {
     if (shouldUseCourierApi()) {
       if (!isCourierApiConfigured()) {
         throw new Error(
-          "Real shipment was not sent to Teampafex. Configure VITE_COURIER_EMAIL and VITE_COURIER_PASSWORD on Render, then redeploy.",
+          "Real shipment was not sent to Teampafex. Configure TEAMPAFEX_EMAIL and TEAMPAFEX_PASSWORD on the Logicorp API server, then redeploy.",
         );
       }
 
@@ -537,8 +565,12 @@ export const ordersApi = {
       if (!result?.order) throw apiServerUnavailableError();
       return result.order as Order;
     } catch (err) {
+      if (isApiUnavailableError(err)) {
+        const sameOriginOrder = await createSameOriginApiOrder(data);
+        if (sameOriginOrder) return sameOriginOrder;
+      }
       if (isCourierApiConfigured()) return createDirectCourierOrder(data);
-      if (isNetworkError(err)) throw apiServerUnavailableError();
+      if (isApiUnavailableError(err)) throw apiServerUnavailableError();
       throw err;
     }
   },

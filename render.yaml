@@ -2,9 +2,8 @@ services:
   - type: web
     name: logicorp-api
     env: node
-    rootDir: server
-    buildCommand: npm install
-    startCommand: npm start
+    buildCommand: npm --prefix server install && npm --prefix client-panel install && npm --prefix client-panel run build
+    startCommand: npm --prefix server start
     disk:
       name: logicorp-data
       mountPath: /var/data

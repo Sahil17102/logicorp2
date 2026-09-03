@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8080);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "..", "data");
 const DATA_FILE = path.join(DATA_DIR, "logicorp.json");
+const CLIENT_DIST_DIR = path.join(__dirname, "..", "..", "client-panel", "dist");
 const TEAMPAFEX_BASE_URL = (process.env.TEAMPAFEX_API_URL || "https://teampafex.in").replace(/\/+$/, "");
 const TEAMPAFEX_EMAIL = process.env.TEAMPAFEX_EMAIL || "";
 const TEAMPAFEX_PASSWORD = process.env.TEAMPAFEX_PASSWORD || "";
@@ -717,6 +718,14 @@ app.get("/api/admin/service-providers", (_req, res) => {
     pagination: { page: 1, limit: 50, total: 1, totalPages: 1 },
   });
 });
+
+if (fs.existsSync(CLIENT_DIST_DIR)) {
+  app.use(express.static(CLIENT_DIST_DIR));
+  app.get("*", (req, res, next) => {
+    if (req.path === "/health" || req.path.startsWith("/api/")) return next();
+    return res.sendFile(path.join(CLIENT_DIST_DIR, "index.html"));
+  });
+}
 
 app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ error: err.message || "Something went wrong" });
