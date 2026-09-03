@@ -259,8 +259,13 @@ export default function UsersPage() {
         <div className="flex items-center justify-end gap-2">
           <Tooltip title="View details">
             <button
+              type="button"
               className="p-1 rounded hover:bg-background transition-colors text-muted hover:text-foreground"
-              onClick={() => navigate(`/users-management/${record.id}`)}
+              aria-label="View user details"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/users-management/${record.id}`);
+              }}
             >
               <Eye size={15} />
             </button>
