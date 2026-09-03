@@ -744,27 +744,42 @@ function walletIdForUser(userId = defaultSeller().id) {
   return `wallet-${userId}`;
 }
 
-function defaultWalletCredit() {
+function defaultWalletCredits() {
   const createdAt = nowIso();
-  return {
-    id: "wallet-seed-sahil-1000",
-    walletId: walletIdForUser(defaultSeller().id),
-    amount: 1000,
-    currency: "INR",
-    type: "credit",
-    reason: "admin_credit",
-    ref: "LGC-SEED-1000",
-    meta: { source: "logicorp_seed", notes: "Initial test balance for Sahil Mittal" },
-    createdAt,
-  };
+  return [
+    {
+      id: "wallet-seed-sahil-1000",
+      walletId: walletIdForUser(defaultSeller().id),
+      amount: 1000,
+      currency: "INR",
+      type: "credit",
+      reason: "admin_credit",
+      ref: "LGC-SEED-1000",
+      meta: { source: "logicorp_seed", notes: "Initial test balance for Sahil Mittal" },
+      createdAt,
+    },
+    {
+      id: "wallet-seed-sahil-topup-1000",
+      walletId: walletIdForUser(defaultSeller().id),
+      amount: 1000,
+      currency: "INR",
+      type: "credit",
+      reason: "admin_credit",
+      ref: "LGC-SEED-TOPUP-1000",
+      meta: { source: "logicorp_seed", notes: "Additional wallet balance for Sahil Mittal" },
+      createdAt,
+    },
+  ];
 }
 
 function ensureWalletSeed(data) {
-  const seed = defaultWalletCredit();
+  const seeds = defaultWalletCredits();
   const transactions = Array.isArray(data.walletTransactions) ? data.walletTransactions : [];
-  const hasSeed = transactions.some((transaction) => transaction.id === seed.id || transaction.ref === seed.ref);
-  data.walletTransactions = hasSeed ? transactions : [seed, ...transactions];
-  return hasSeed ? data : writeData(data);
+  const missingSeeds = seeds.filter((seed) => (
+    !transactions.some((transaction) => transaction.id === seed.id || transaction.ref === seed.ref)
+  ));
+  data.walletTransactions = missingSeeds.length ? [...missingSeeds, ...transactions] : transactions;
+  return missingSeeds.length ? writeData(data) : data;
 }
 
 function balanceForUser(userId, transactions) {

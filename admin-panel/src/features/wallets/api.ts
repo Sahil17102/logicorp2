@@ -12,20 +12,59 @@ import type {
 
 const useStaticData = !import.meta.env.VITE_API_URL || import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
 const STATIC_WALLET_TRANSACTIONS_KEY = "logicorp-static-wallet-transactions";
+const STATIC_WALLET_ID = "wallet-demo-client-user";
 
 function nowIso(): string {
   return new Date().toISOString();
 }
 
+function staticWalletSeedTransactions(): WalletTransaction[] {
+  const createdAt = nowIso();
+  return [
+    {
+      id: "wallet-seed-sahil-1000",
+      walletId: STATIC_WALLET_ID,
+      amount: 1000,
+      currency: "INR",
+      type: "credit",
+      reason: "admin_credit",
+      ref: "LGC-SEED-1000",
+      meta: { source: "logicorp_seed", notes: "Initial test balance for Sahil Mittal" },
+      createdAt,
+    },
+    {
+      id: "wallet-seed-sahil-topup-1000",
+      walletId: STATIC_WALLET_ID,
+      amount: 1000,
+      currency: "INR",
+      type: "credit",
+      reason: "admin_credit",
+      ref: "LGC-SEED-TOPUP-1000",
+      meta: { source: "logicorp_seed", notes: "Additional wallet balance for Sahil Mittal" },
+      createdAt,
+    },
+  ];
+}
+
+function ensureStaticWalletSeeds(transactions: WalletTransaction[]): WalletTransaction[] {
+  const missingSeeds = staticWalletSeedTransactions().filter((seed) => (
+    !transactions.some((transaction) => transaction.id === seed.id || transaction.ref === seed.ref)
+  ));
+  if (!missingSeeds.length) return transactions;
+  const next = [...missingSeeds, ...transactions];
+  writeStaticTransactions(next);
+  return next;
+}
+
 function readStaticTransactions(): WalletTransaction[] {
   if (typeof window === "undefined") return [];
   const raw = localStorage.getItem(STATIC_WALLET_TRANSACTIONS_KEY);
-  if (!raw) return [];
+  if (!raw) return ensureStaticWalletSeeds([]);
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as WalletTransaction[]) : [];
+    return ensureStaticWalletSeeds(Array.isArray(parsed) ? (parsed as WalletTransaction[]) : []);
   } catch {
-    return [];
+    return ensureStaticWalletSeeds([]);
   }
 }
 
