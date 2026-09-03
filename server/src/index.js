@@ -521,18 +521,53 @@ function pickupRegistrationPayload(address) {
   };
 }
 
-async function resolveProviderPickupId(pickupAddressId) {
-  if (/^\d+$/.test(String(pickupAddressId))) return String(pickupAddressId);
+function rtoAddressForRegistration(address) {
+  if (address.isSameAsRto !== false || !address.rtoAddress) return address;
+  return {
+    ...address.rtoAddress,
+    nickname: `${address.nickname || "Pickup"} RTO`,
+    email: address.rtoAddress.email || address.email,
+    addressLine2: address.rtoAddress.addressLine2 || "",
+  };
+}
+
+async function resolveProviderAddressIds(pickupAddressId) {
+  if (/^\d+$/.test(String(pickupAddressId))) {
+    const providerAddressId = String(pickupAddressId);
+    return { pickupAddressId: providerAddressId, rtoAddressId: providerAddressId };
+  }
+
   const data = ensurePickupSeed(readData());
   const address = data.pickupAddresses.find((item) => item.id === pickupAddressId);
   if (!address) throw Object.assign(new Error("Pickup address not found"), { status: 400 });
-  if (address.providerPickupAddressId) return String(address.providerPickupAddressId);
-  const result = await providerRequest("post", "/api/register_pickup_address", pickupRegistrationPayload(address));
-  if (!result.status || !result.pickup_address_id) throw Object.assign(new Error(result.msg || "Pickup registration failed"), { status: 400 });
-  address.providerPickupAddressId = String(result.pickup_address_id);
-  address.updatedAt = nowIso();
-  writeData(data);
-  return address.providerPickupAddressId;
+
+  if (!address.providerPickupAddressId) {
+    const result = await providerRequest("post", "/api/register_pickup_address", pickupRegistrationPayload(address));
+    if (!result.status || !result.pickup_address_id) throw Object.assign(new Error(result.msg || "Pickup registration failed"), { status: 400 });
+    address.providerPickupAddressId = String(result.pickup_address_id);
+    address.updatedAt = nowIso();
+    writeData(data);
+  }
+
+  if (address.isSameAsRto !== false || !address.rtoAddress) {
+    return {
+      pickupAddressId: String(address.providerPickupAddressId),
+      rtoAddressId: String(address.providerPickupAddressId),
+    };
+  }
+
+  if (!address.providerRtoAddressId) {
+    const result = await providerRequest("post", "/api/register_pickup_address", pickupRegistrationPayload(rtoAddressForRegistration(address)));
+    if (!result.status || !result.pickup_address_id) throw Object.assign(new Error(result.msg || "RTO address registration failed"), { status: 400 });
+    address.providerRtoAddressId = String(result.pickup_address_id);
+    address.updatedAt = nowIso();
+    writeData(data);
+  }
+
+  return {
+    pickupAddressId: String(address.providerPickupAddressId),
+    rtoAddressId: String(address.providerRtoAddressId),
+  };
 }
 
 function packagePayload(pkg) {
@@ -551,8 +586,10 @@ function packagePayload(pkg) {
   };
 }
 
-function providerCreatePayload(order, providerPickupAddressId) {
+function providerCreatePayload(order, providerAddressIds) {
   const isB2B = order.orderType === "B2B";
+  const providerPickupAddressId = providerAddressIds.pickupAddressId;
+  const providerRtoAddressId = providerAddressIds.rtoAddressId || providerPickupAddressId;
   const packages = isB2B && Array.isArray(order.packages) && order.packages.length
     ? order.packages.flatMap((pkg) => Array.from({ length: Math.max(1, Math.floor(pkg.quantity ?? 1)) }, () => packagePayload(pkg)))
     : [packagePayload({ weightKg: kgFromGrams(order.weight), length: order.length, breadth: order.breadth, height: order.height })];
@@ -591,6 +628,7 @@ function providerCreatePayload(order, providerPickupAddressId) {
     total_volumetric_weight: String(totalVolumetricWeight),
     packages,
     pickup_address_id: providerPickupAddressId,
+    rto_address_id: providerRtoAddressId,
     order_type: order.orderType,
     delivery_partner_id: /^\d+$/.test(String(order.courierId)) ? Number(order.courierId) : order.courierId,
   };
@@ -883,11 +921,11 @@ app.post("/api/rates/b2b/available", async (req, res) => {
 
 app.post("/api/orders", async (req, res, next) => {
   try {
-    const providerPickupId = await resolveProviderPickupId(req.body.pickupAddressId);
-    const providerPayload = providerCreatePayload(req.body, providerPickupId);
+    const providerAddressIds = await resolveProviderAddressIds(req.body.pickupAddressId);
+    const providerPayload = providerCreatePayload(req.body, providerAddressIds);
     const providerResult = await providerRequest("post", "/api/create_order", providerPayload);
     if (!providerResult.status) throw Object.assign(new Error(providerResult.msg || "Teampafex order creation failed"), { status: 400 });
-    const order = orderFromPayload(req.body, providerResult, providerPickupId);
+    const order = orderFromPayload(req.body, providerResult, providerAddressIds.pickupAddressId);
     const data = readData();
     data.orders = [order, ...data.orders.filter((item) => item.id !== order.id)];
     writeData(data);

@@ -342,6 +342,7 @@ function toProviderCreateOrderPayload(
     total_volumetric_weight: String(totalVolumetricWeight),
     packages,
     pickup_address_id: providerPickupAddressId,
+    rto_address_id: providerPickupAddressId,
     order_type: data.orderType,
     delivery_partner_id: /^\d+$/.test(data.courierId) ? Number(data.courierId) : data.courierId,
   };
