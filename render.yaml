@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: logicorp-api
+    env: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    disk:
+      name: logicorp-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: TEAMPAFEX_API_URL
+        value: https://teampafex.in
+      - key: TEAMPAFEX_EMAIL
+        sync: false
+      - key: TEAMPAFEX_PASSWORD
+        sync: false
+      - key: CORS_ORIGIN
+        value: "*"
