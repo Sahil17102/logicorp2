@@ -91,7 +91,10 @@ export async function loginCourierApi(email: string, password: string): Promise<
       email,
       password,
     });
-    const token = data?.token?.token;
+    const token =
+      typeof data?.token === "string"
+        ? data.token
+        : data?.token?.token ?? data?.token?.accessToken ?? data?.accessToken;
     if (!data?.success || !token) {
       throw new Error("Courier API login did not return a token");
     }
@@ -151,7 +154,8 @@ async function courierRequest<T>(
 
 export interface CourierLoginResponse {
   success: boolean;
-  token?: { token?: string };
+  token?: { token?: string; accessToken?: string } | string;
+  accessToken?: string;
 }
 
 export interface CourierPickupAddressPayload {
