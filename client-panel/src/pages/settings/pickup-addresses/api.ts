@@ -11,6 +11,8 @@ import type {
 } from "./types";
 
 const STATIC_PICKUP_STORAGE_KEY = "logicorp-client-pickup-addresses";
+const DEFAULT_PICKUP_ID = "static-pickup-logicorp-global";
+const LEGACY_PICKUP_ID = "static-pickup-gurugram";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -50,19 +52,19 @@ function makePickupAddress(
 function seedPickupAddress(): PickupAddress {
   const createdAt = nowIso();
   return {
-    id: "static-pickup-gurugram",
-    nickname: "Logicorp Warehouse",
-    contactName: "Sahil Mittal",
-    phone: "9876543210",
+    id: DEFAULT_PICKUP_ID,
+    nickname: "LOGICORP GLOBAL SOLUTIONS",
+    contactName: "MAHENDRA SINGH",
+    phone: "8860007910",
     email: "support@logicorp.in",
     role: "warehouse_manager",
-    landmark: "Near Cyber Hub",
-    addressLine1: "DLF Cyber City",
-    addressLine2: "Sector 24",
-    city: "Gurugram",
+    landmark: "Near Lumax Sector 18",
+    addressLine1: "MAHENDRA SINGH COMPOUND NEAR LUMAX SECTOR 18",
+    addressLine2: "",
+    city: "Gurgaon",
     state: "Haryana",
     country: "India",
-    pincode: "122001",
+    pincode: "122015",
     gstNumber: "",
     isPrimary: true,
     addressType: "pickup",
@@ -71,6 +73,28 @@ function seedPickupAddress(): PickupAddress {
     createdAt,
     updatedAt: createdAt,
   };
+}
+
+function ensureSeedPickupAddress(addresses: PickupAddress[]): PickupAddress[] {
+  const seed = seedPickupAddress();
+  const hasSeed = addresses.some(
+    (address) =>
+      address.id === seed.id ||
+      (address.phone === seed.phone && address.pincode === seed.pincode),
+  );
+  const rest = addresses
+    .filter((address) => address.id !== LEGACY_PICKUP_ID)
+    .map((address) => ({ ...address, isPrimary: hasSeed ? address.isPrimary : false }));
+
+  if (hasSeed) {
+    return rest.map((address) =>
+      address.id === seed.id || (address.phone === seed.phone && address.pincode === seed.pincode)
+        ? { ...seed, id: address.id, createdAt: address.createdAt, isPrimary: true }
+        : { ...address, isPrimary: false },
+    );
+  }
+
+  return [seed, ...rest];
 }
 
 function readStaticPickupAddresses(): PickupAddress[] {
@@ -83,7 +107,10 @@ function readStaticPickupAddresses(): PickupAddress[] {
   }
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed as PickupAddress[] : [seedPickupAddress()];
+    if (!Array.isArray(parsed)) return [seedPickupAddress()];
+    const addresses = ensureSeedPickupAddress(parsed as PickupAddress[]);
+    localStorage.setItem(STATIC_PICKUP_STORAGE_KEY, JSON.stringify(addresses));
+    return addresses;
   } catch {
     const addresses = [seedPickupAddress()];
     localStorage.setItem(STATIC_PICKUP_STORAGE_KEY, JSON.stringify(addresses));
@@ -99,7 +126,11 @@ function writeStaticPickupAddresses(addresses: PickupAddress[]): void {
 
 function readCourierPickupAddresses(): PickupAddress[] {
   const addresses = courierApi.readStoredPickupAddresses<PickupAddress>();
-  if (addresses.length > 0) return addresses;
+  if (addresses.length > 0) {
+    const updated = ensureSeedPickupAddress(addresses);
+    courierApi.writeStoredPickupAddresses(updated);
+    return updated;
+  }
 
   const seeded = readStaticPickupAddresses();
   courierApi.writeStoredPickupAddresses(seeded);
