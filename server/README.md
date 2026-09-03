@@ -20,3 +20,5 @@ Render web service commands:
 
 - Build: `npm run render:build`
 - Start: `npm run render:start`
+
+For production stability, keep `TEAMPAFEX_EMAIL` and `TEAMPAFEX_PASSWORD` set on the Render web service even though the admin panel can verify and save credentials. Admin-saved JWTs live under `DATA_DIR`, so a missing persistent disk or a fresh service can otherwise boot with no courier credentials.
