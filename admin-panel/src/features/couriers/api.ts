@@ -25,8 +25,19 @@ interface ExternalCourierIdsResponse {
 
 interface ExternalCourierLoginResponse {
   success?: boolean;
-  token?: { token?: string; accessToken?: string } | string;
+  status?: boolean;
+  token?: { token?: string; accessToken?: string; jwt?: string; jwtToken?: string } | string;
   accessToken?: string;
+  access_token?: string;
+  jwt?: string;
+  jwtToken?: string;
+  data?: {
+    token?: string;
+    accessToken?: string;
+    access_token?: string;
+    jwt?: string;
+    jwtToken?: string;
+  };
 }
 
 const DEFAULT_EXTERNAL_COURIER_API_URL = "https://teampafex.in";
@@ -58,7 +69,22 @@ function isExternalCourierApiEnabled(): boolean {
 
 function readExternalToken(data: ExternalCourierLoginResponse): string | null {
   if (typeof data.token === "string") return data.token;
-  return data.token?.token ?? data.token?.accessToken ?? data.accessToken ?? null;
+  return (
+    data.token?.token ??
+    data.token?.jwt ??
+    data.token?.jwtToken ??
+    data.token?.accessToken ??
+    data.jwt ??
+    data.jwtToken ??
+    data.accessToken ??
+    data.access_token ??
+    data.data?.token ??
+    data.data?.jwt ??
+    data.data?.jwtToken ??
+    data.data?.accessToken ??
+    data.data?.access_token ??
+    null
+  );
 }
 
 async function getExternalCourierToken(): Promise<string> {
@@ -72,7 +98,7 @@ async function getExternalCourierToken(): Promise<string> {
     password: externalCourierApiPassword,
   });
   const token = readExternalToken(data);
-  if (!data.success || !token) {
+  if ((data.success === false || data.status === false) || !token) {
     throw new Error("Courier API login did not return a token");
   }
   externalCourierToken = token;

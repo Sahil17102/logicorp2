@@ -2,6 +2,8 @@
 
 This server connects the client and admin panels to the same order store and keeps Teampafex credentials on the server.
 
+Admin service-provider credential saves log in to Teampafex, persist the returned JWT token server-side, and reuse that token for authenticated pickup, rate, and order requests. If Teampafex returns 401, the server refreshes the JWT from the saved email/password and retries once.
+
 Required Render environment variables:
 
 - `TEAMPAFEX_EMAIL`

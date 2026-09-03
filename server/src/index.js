@@ -14,8 +14,10 @@ const TEAMPAFEX_BASE_URL = (process.env.TEAMPAFEX_API_URL || "https://teampafex.
 const TEAMPAFEX_EMAIL = process.env.TEAMPAFEX_EMAIL || "";
 const TEAMPAFEX_PASSWORD = process.env.TEAMPAFEX_PASSWORD || "";
 const TEAMPAFEX_API_TOKEN = process.env.TEAMPAFEX_API_TOKEN || "";
+const TEAMPAFEX_PROVIDER_ID = "sp-teampafex";
 
 let cachedToken = TEAMPAFEX_API_TOKEN || null;
+let cachedTokenKey = TEAMPAFEX_API_TOKEN ? "env-token" : null;
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -28,14 +30,20 @@ app.use(cors({
   credentials: true,
 }));
 
-const providerHttp = axios.create({
-  baseURL: TEAMPAFEX_BASE_URL,
-  timeout: 60_000,
-  headers: { Accept: "application/json", "Content-Type": "application/json" },
-});
-
 function nowIso() {
   return new Date().toISOString();
+}
+
+function normalizeBaseUrl(value) {
+  return String(value || TEAMPAFEX_BASE_URL).replace(/\/+$/, "");
+}
+
+function providerHttp(baseUrl = TEAMPAFEX_BASE_URL) {
+  return axios.create({
+    baseURL: normalizeBaseUrl(baseUrl),
+    timeout: 60_000,
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+  });
 }
 
 function readData() {
@@ -82,31 +90,104 @@ function providerError(err) {
   return error;
 }
 
-async function providerToken() {
-  if (cachedToken) return cachedToken;
-  if (!TEAMPAFEX_EMAIL || !TEAMPAFEX_PASSWORD) {
+function extractProviderToken(data) {
+  if (typeof data?.token === "string") return data.token;
+  if (typeof data?.jwt === "string") return data.jwt;
+  if (typeof data?.jwtToken === "string") return data.jwtToken;
+  if (typeof data?.accessToken === "string") return data.accessToken;
+  if (typeof data?.access_token === "string") return data.access_token;
+  if (typeof data?.token?.token === "string") return data.token.token;
+  if (typeof data?.token?.jwt === "string") return data.token.jwt;
+  if (typeof data?.token?.jwtToken === "string") return data.token.jwtToken;
+  if (typeof data?.token?.accessToken === "string") return data.token.accessToken;
+  if (typeof data?.data?.token === "string") return data.data.token;
+  if (typeof data?.data?.jwt === "string") return data.data.jwt;
+  if (typeof data?.data?.jwtToken === "string") return data.data.jwtToken;
+  if (typeof data?.data?.accessToken === "string") return data.data.accessToken;
+  if (typeof data?.data?.access_token === "string") return data.data.access_token;
+  return null;
+}
+
+function defaultProviderCredentialValues() {
+  return {
+    baseUrl: TEAMPAFEX_BASE_URL,
+    email: TEAMPAFEX_EMAIL,
+    password: TEAMPAFEX_PASSWORD,
+    accessToken: TEAMPAFEX_API_TOKEN,
+    jwtToken: "",
+  };
+}
+
+function effectiveCredentialValues(data, type = "b2c") {
+  const saved = data.providerCredentials?.[TEAMPAFEX_PROVIDER_ID];
+  const values = saved?.[type]?.values || saved?.b2c?.values || {};
+  return {
+    ...defaultProviderCredentialValues(),
+    ...values,
+    baseUrl: normalizeBaseUrl(values.baseUrl || TEAMPAFEX_BASE_URL),
+  };
+}
+
+async function loginProvider(credentials) {
+  const baseUrl = normalizeBaseUrl(credentials.baseUrl);
+  if (!credentials.email || !credentials.password) {
     throw Object.assign(new Error("TEAMPAFEX_EMAIL and TEAMPAFEX_PASSWORD are required on the API server."), { status: 500 });
   }
   try {
-    const { data } = await providerHttp.post("/api/login", {
-      email: TEAMPAFEX_EMAIL,
-      password: TEAMPAFEX_PASSWORD,
+    const { data } = await providerHttp(baseUrl).post("/api/login", {
+      email: credentials.email,
+      password: credentials.password,
     });
-    const token = typeof data?.token === "string"
-      ? data.token
-      : data?.token?.token ?? data?.token?.accessToken ?? data?.accessToken;
+    const token = extractProviderToken(data);
     if (!data?.success || !token) throw new Error("Courier API login did not return a token");
-    cachedToken = token;
-    return token;
+    return { token, baseUrl, loginResponse: data };
   } catch (err) {
     throw providerError(err);
   }
 }
 
+async function providerAuth(type = "b2c") {
+  const store = readData();
+  const credentials = effectiveCredentialValues(store, type);
+  const baseUrl = normalizeBaseUrl(credentials.baseUrl);
+  const configuredToken = credentials.jwtToken || credentials.accessToken || credentials.token || TEAMPAFEX_API_TOKEN;
+  const tokenKey = `${baseUrl}|${credentials.email || "token"}|${configuredToken ? "provided" : "login"}`;
+
+  if (cachedToken && cachedTokenKey === tokenKey) return { token: cachedToken, baseUrl };
+  if (configuredToken) {
+    cachedToken = configuredToken;
+    cachedTokenKey = tokenKey;
+    return { token: configuredToken, baseUrl };
+  }
+
+  const login = await loginProvider(credentials);
+  cachedToken = login.token;
+  cachedTokenKey = tokenKey;
+  return { token: login.token, baseUrl: login.baseUrl };
+}
+
+async function refreshProviderJwt(type = "b2c") {
+  const data = ensureProviderCredentialsSeed(readData());
+  const credentials = effectiveCredentialValues(data, type);
+  const login = await loginProvider(credentials);
+  data.providerCredentials[TEAMPAFEX_PROVIDER_ID][type].values = {
+    ...data.providerCredentials[TEAMPAFEX_PROVIDER_ID][type].values,
+    jwtToken: login.token,
+    accessToken: "",
+  };
+  if (type === "b2c" && data.providerCredentials[TEAMPAFEX_PROVIDER_ID].b2b?.sameAsB2c) {
+    data.providerCredentials[TEAMPAFEX_PROVIDER_ID].b2b.values = data.providerCredentials[TEAMPAFEX_PROVIDER_ID].b2c.values;
+  }
+  cachedToken = login.token;
+  cachedTokenKey = `${login.baseUrl}|${credentials.email || "token"}|provided`;
+  writeData(data);
+  return { token: login.token, baseUrl: login.baseUrl };
+}
+
 async function providerRequest(method, url, data) {
-  const token = await providerToken();
+  const { token, baseUrl } = await providerAuth();
   try {
-    const res = await providerHttp.request({
+    const res = await providerHttp(baseUrl).request({
       method,
       url,
       data,
@@ -114,7 +195,22 @@ async function providerRequest(method, url, data) {
     });
     return res.data;
   } catch (err) {
-    if (err?.response?.status === 401 && !TEAMPAFEX_API_TOKEN) cachedToken = null;
+    if (err?.response?.status === 401 && !TEAMPAFEX_API_TOKEN) {
+      cachedToken = null;
+      cachedTokenKey = null;
+      const refreshed = await refreshProviderJwt();
+      try {
+        const retry = await providerHttp(refreshed.baseUrl).request({
+          method,
+          url,
+          data,
+          headers: { Authorization: `Bearer ${refreshed.token}` },
+        });
+        return retry.data;
+      } catch (retryErr) {
+        throw providerError(retryErr);
+      }
+    }
     throw providerError(err);
   }
 }
@@ -239,6 +335,134 @@ function defaultSeller() {
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function credentialFields() {
+  return [
+    { key: "baseUrl", label: "Base URL", type: "text", required: true },
+    { key: "email", label: "Email", type: "text", required: true },
+    { key: "password", label: "Password", type: "password", required: true },
+    { key: "jwtToken", label: "JWT Token", type: "password", required: false },
+  ];
+}
+
+function defaultProviderCredentials() {
+  const fields = credentialFields();
+  const values = defaultProviderCredentialValues();
+  return {
+    b2c: {
+      fields,
+      description: "Teampafex B2C courier API credentials",
+      values,
+    },
+    b2b: {
+      fields,
+      description: "Teampafex B2B courier API credentials",
+      values,
+      sameAsB2c: true,
+    },
+  };
+}
+
+function mergeCredentialValues(current, incoming) {
+  const next = { ...current };
+  Object.entries(incoming || {}).forEach(([key, value]) => {
+    if (typeof value !== "string") return;
+    const clean = value.trim();
+    if (!clean || clean === "********") return;
+    next[key] = clean;
+  });
+  if (next.baseUrl) next.baseUrl = normalizeBaseUrl(next.baseUrl);
+  return next;
+}
+
+function ensureProviderCredentialsSeed(data) {
+  const defaults = defaultProviderCredentials();
+  const current = data.providerCredentials?.[TEAMPAFEX_PROVIDER_ID];
+  data.providerCredentials = {
+    ...(data.providerCredentials || {}),
+    [TEAMPAFEX_PROVIDER_ID]: {
+      b2c: {
+        ...defaults.b2c,
+        ...current?.b2c,
+        values: { ...defaults.b2c.values, ...current?.b2c?.values },
+      },
+      b2b: {
+        ...defaults.b2b,
+        ...current?.b2b,
+        values: { ...defaults.b2b.values, ...current?.b2b?.values },
+        sameAsB2c: current?.b2b?.sameAsB2c ?? true,
+      },
+    },
+  };
+  return data;
+}
+
+function redactedCredentials(credentials) {
+  const redactBlock = (block) => {
+    const values = { ...(block.values || {}) };
+    ["password", "accessToken", "jwtToken", "token"].forEach((key) => {
+      if (values[key]) values[key] = "********";
+    });
+    return { ...block, values };
+  };
+  return {
+    b2c: redactBlock(credentials.b2c),
+    b2b: { ...redactBlock(credentials.b2b), sameAsB2c: credentials.b2b.sameAsB2c ?? true },
+  };
+}
+
+function hasUsableCredentials(values) {
+  return Boolean(values?.jwtToken || values?.accessToken || values?.token || (values?.email && values?.password));
+}
+
+function serviceProviderPayload(credentials) {
+  const b2cConfigured = hasUsableCredentials(credentials.b2c.values);
+  const b2bConfigured = credentials.b2b.sameAsB2c
+    ? b2cConfigured
+    : hasUsableCredentials(credentials.b2b.values);
+  return {
+    id: TEAMPAFEX_PROVIDER_ID,
+    serviceProvider: "teampafex",
+    displayName: "Teampafex",
+    logoUrl: "",
+    totalCouriers: 3,
+    enabledCouriers: 3,
+    serviceProviderDisplayName: "Teampafex",
+    isEnabled: true,
+    b2c: { configured: b2cConfigured },
+    b2b: { configured: b2bConfigured, sameAsB2c: credentials.b2b.sameAsB2c ?? true },
+    status: "active",
+    updatedAt: nowIso(),
+  };
+}
+
+async function updateStoredProviderCredentials(type, credentials) {
+  const data = ensureProviderCredentialsSeed(readData());
+  const current = data.providerCredentials[TEAMPAFEX_PROVIDER_ID];
+  const block = current[type] || current.b2c;
+  const values = mergeCredentialValues(block.values, credentials);
+  const login = await loginProvider(values);
+  values.jwtToken = login.token;
+  values.accessToken = "";
+  data.providerCredentials[TEAMPAFEX_PROVIDER_ID] = {
+    ...current,
+    [type]: {
+      ...block,
+      values,
+    },
+  };
+  if (type === "b2c" && current.b2b?.sameAsB2c) {
+    data.providerCredentials[TEAMPAFEX_PROVIDER_ID].b2b = {
+      ...current.b2b,
+      values,
+      sameAsB2c: true,
+    };
+  }
+  cachedToken = login.token;
+  cachedTokenKey = `${login.baseUrl}|${values.email || "token"}|provided`;
+  writeData(data);
+  return data.providerCredentials[TEAMPAFEX_PROVIDER_ID];
 }
 
 function ensurePickupSeed(data) {
@@ -699,24 +923,55 @@ app.get("/api/admin/users/:userId/pickup-addresses", (_req, res) => {
 });
 
 app.get("/api/admin/service-providers", (_req, res) => {
+  const credentials = ensureProviderCredentialsSeed(readData()).providerCredentials[TEAMPAFEX_PROVIDER_ID];
+  const provider = serviceProviderPayload(credentials);
   res.json({
-    providers: [{
-      id: "sp-teampafex",
-      serviceProvider: "teampafex",
-      displayName: "Teampafex",
-      logoUrl: "",
-      totalCouriers: 3,
-      enabledCouriers: 3,
-      serviceProviderDisplayName: "Teampafex",
-      isEnabled: true,
-      b2c: { configured: true },
-      b2b: { configured: true, sameAsB2c: true },
-      status: "active",
-      updatedAt: nowIso(),
-    }],
-    stats: { total: 1, active: 1, b2cConfigured: 1 },
+    providers: [provider],
+    stats: { total: 1, active: 1, b2cConfigured: provider.b2c.configured ? 1 : 0 },
     pagination: { page: 1, limit: 50, total: 1, totalPages: 1 },
   });
+});
+
+app.get("/api/admin/service-providers/:id", (req, res) => {
+  if (req.params.id !== TEAMPAFEX_PROVIDER_ID) return res.status(404).json({ error: "Service provider not found" });
+  const credentials = ensureProviderCredentialsSeed(readData()).providerCredentials[TEAMPAFEX_PROVIDER_ID];
+  res.json({ provider: serviceProviderPayload(credentials) });
+});
+
+app.get("/api/admin/service-providers/:id/credentials", (req, res) => {
+  if (req.params.id !== TEAMPAFEX_PROVIDER_ID) return res.status(404).json({ error: "Service provider not found" });
+  const data = ensureProviderCredentialsSeed(readData());
+  writeData(data);
+  return res.json(redactedCredentials(data.providerCredentials[TEAMPAFEX_PROVIDER_ID]));
+});
+
+app.put("/api/admin/service-providers/:id", (req, res) => {
+  if (req.params.id !== TEAMPAFEX_PROVIDER_ID) return res.status(404).json({ error: "Service provider not found" });
+  const data = ensureProviderCredentialsSeed(readData());
+  const current = data.providerCredentials[TEAMPAFEX_PROVIDER_ID];
+  if (typeof req.body?.b2bSameAsB2c === "boolean") {
+    current.b2b = {
+      ...current.b2b,
+      values: req.body.b2bSameAsB2c ? current.b2c.values : current.b2b.values,
+      sameAsB2c: req.body.b2bSameAsB2c,
+    };
+  }
+  writeData(data);
+  res.json({ message: "Service provider updated" });
+});
+
+app.patch("/api/admin/service-providers/:id/credentials", async (req, res, next) => {
+  try {
+    if (req.params.id !== TEAMPAFEX_PROVIDER_ID) return res.status(404).json({ error: "Service provider not found" });
+    const type = req.body?.type === "b2b" ? "b2b" : "b2c";
+    const credentials = await updateStoredProviderCredentials(type, req.body?.credentials || {});
+    return res.json({
+      message: "Courier credentials verified and JWT token saved",
+      credentials: redactedCredentials(credentials),
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 if (fs.existsSync(CLIENT_DIST_DIR)) {

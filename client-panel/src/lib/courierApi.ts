@@ -90,17 +90,34 @@ const courierHttp = axios.create({
   },
 });
 
+function readCourierToken(data: CourierLoginResponse): string | null {
+  if (typeof data.token === "string") return data.token;
+  return (
+    data.token?.token ??
+    data.token?.jwt ??
+    data.token?.jwtToken ??
+    data.token?.accessToken ??
+    data.jwt ??
+    data.jwtToken ??
+    data.accessToken ??
+    data.access_token ??
+    data.data?.token ??
+    data.data?.jwt ??
+    data.data?.jwtToken ??
+    data.data?.accessToken ??
+    data.data?.access_token ??
+    null
+  );
+}
+
 export async function loginCourierApi(email: string, password: string): Promise<string> {
   try {
     const { data } = await courierHttp.post<CourierLoginResponse>("/api/login", {
       email,
       password,
     });
-    const token =
-      typeof data?.token === "string"
-        ? data.token
-        : data?.token?.token ?? data?.token?.accessToken ?? data?.accessToken;
-    if (!data?.success || !token) {
+    const token = readCourierToken(data);
+    if ((data.success === false || data.status === false) || !token) {
       throw new Error("Courier API login did not return a token");
     }
     writeStoredToken(token);
@@ -158,9 +175,20 @@ async function courierRequest<T>(
 }
 
 export interface CourierLoginResponse {
-  success: boolean;
-  token?: { token?: string; accessToken?: string } | string;
+  success?: boolean;
+  status?: boolean;
+  token?: { token?: string; accessToken?: string; jwt?: string; jwtToken?: string } | string;
   accessToken?: string;
+  access_token?: string;
+  jwt?: string;
+  jwtToken?: string;
+  data?: {
+    token?: string;
+    accessToken?: string;
+    access_token?: string;
+    jwt?: string;
+    jwtToken?: string;
+  };
 }
 
 export interface CourierPickupAddressPayload {
