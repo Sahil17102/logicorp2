@@ -301,8 +301,10 @@ export interface CourierCreateOrderPayload {
   total_weight: string;
   total_volumetric_weight: string;
   packages: CourierPackagePayload[];
+  pickup_address_city_name: string;
   pickup_address_id: string;
   rto_address_id?: string;
+  submit_value: string;
   order_type: "B2B" | "B2C";
   delivery_partner_id: number | string;
 }

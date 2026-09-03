@@ -534,7 +534,7 @@ function rtoAddressForRegistration(address) {
 async function resolveProviderAddressIds(pickupAddressId) {
   if (/^\d+$/.test(String(pickupAddressId))) {
     const providerAddressId = String(pickupAddressId);
-    return { pickupAddressId: providerAddressId, rtoAddressId: providerAddressId };
+    return { pickupAddressId: providerAddressId, rtoAddressId: providerAddressId, pickupCity: "" };
   }
 
   const data = ensurePickupSeed(readData());
@@ -553,6 +553,7 @@ async function resolveProviderAddressIds(pickupAddressId) {
     return {
       pickupAddressId: String(address.providerPickupAddressId),
       rtoAddressId: String(address.providerPickupAddressId),
+      pickupCity: String(address.city || ""),
     };
   }
 
@@ -567,6 +568,7 @@ async function resolveProviderAddressIds(pickupAddressId) {
   return {
     pickupAddressId: String(address.providerPickupAddressId),
     rtoAddressId: String(address.providerRtoAddressId),
+    pickupCity: String(address.city || ""),
   };
 }
 
@@ -611,7 +613,7 @@ function providerCreatePayload(order, providerAddressIds) {
     buyer_name: order.buyerName,
     buyer_mobile: order.buyerPhone,
     alternate_buyer_mobile: null,
-    buyer_email: order.buyerEmail || "",
+    buyer_email: order.buyerEmail || defaultSeller().email,
     buyer_address1: order.address,
     buyer_address2: order.address2 || "",
     invoice_number: order.invoices?.[0]?.invoiceNumber || order.orderId,
@@ -627,8 +629,10 @@ function providerCreatePayload(order, providerAddressIds) {
     total_weight: String(totalWeight),
     total_volumetric_weight: String(totalVolumetricWeight),
     packages,
+    pickup_address_city_name: providerAddressIds.pickupCity || order.city || "",
     pickup_address_id: providerPickupAddressId,
     rto_address_id: providerRtoAddressId,
+    submit_value: "Save Order",
     order_type: order.orderType,
     delivery_partner_id: /^\d+$/.test(String(order.courierId)) ? Number(order.courierId) : order.courierId,
   };

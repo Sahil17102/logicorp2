@@ -236,13 +236,15 @@ function toPickupRegistrationPayload(address: StoredProviderPickupAddress): Cour
   };
 }
 
-async function resolveProviderPickupAddressId(pickupAddressId: string): Promise<string> {
-  if (isProviderId(pickupAddressId)) return pickupAddressId;
+async function resolveProviderPickupAddress(
+  pickupAddressId: string,
+): Promise<{ id: string; city: string }> {
+  if (isProviderId(pickupAddressId)) return { id: pickupAddressId, city: "" };
 
   const address = findStoredPickupAddress(pickupAddressId);
-  if (!address) return pickupAddressId;
+  if (!address) return { id: pickupAddressId, city: "" };
   if (address.providerPickupAddressId && isProviderId(address.providerPickupAddressId)) {
-    return address.providerPickupAddressId;
+    return { id: address.providerPickupAddressId, city: String(address.city || "") };
   }
 
   const result = await courierApi.registerPickupAddress(toPickupRegistrationPayload(address));
@@ -257,7 +259,7 @@ async function resolveProviderPickupAddressId(pickupAddressId: string): Promise<
       item.id === address.id ? { ...item, providerPickupAddressId } : item,
     ),
   );
-  return providerPickupAddressId;
+  return { id: providerPickupAddressId, city: String(address.city || "") };
 }
 
 function getProviderOrderId(result: {
@@ -279,8 +281,9 @@ function getProviderAwb(result: {
 
 function toProviderCreateOrderPayload(
   data: CreateOrderPayload,
-  providerPickupAddressId: string,
+  providerPickupAddress: { id: string; city: string },
 ): CourierCreateOrderPayload {
+  const providerPickupAddressId = providerPickupAddress.id;
   const isB2B = data.orderType === "B2B";
   const packages = isB2B && data.packages?.length
     ? data.packages.flatMap((pkg) => {
@@ -325,7 +328,7 @@ function toProviderCreateOrderPayload(
     buyer_name: data.buyerName,
     buyer_mobile: data.buyerPhone,
     alternate_buyer_mobile: null,
-    buyer_email: data.buyerEmail || "",
+    buyer_email: data.buyerEmail || "support@logicorp.in",
     buyer_address1: data.address,
     buyer_address2: data.address2 || "",
     invoice_number: firstInvoice?.invoiceNumber || data.orderId,
@@ -341,8 +344,10 @@ function toProviderCreateOrderPayload(
     total_weight: String(totalWeight),
     total_volumetric_weight: String(totalVolumetricWeight),
     packages,
+    pickup_address_city_name: providerPickupAddress.city || data.city,
     pickup_address_id: providerPickupAddressId,
     rto_address_id: providerPickupAddressId,
+    submit_value: "Save Order",
     order_type: data.orderType,
     delivery_partner_id: /^\d+$/.test(data.courierId) ? Number(data.courierId) : data.courierId,
   };
@@ -399,8 +404,8 @@ function makeOrderFromPayload(
 
 async function createDirectCourierOrder(data: CreateOrderPayload): Promise<Order> {
   try {
-    const providerPickupAddressId = await resolveProviderPickupAddressId(data.pickupAddressId);
-    const providerPayload = toProviderCreateOrderPayload(data, providerPickupAddressId);
+    const providerPickupAddress = await resolveProviderPickupAddress(data.pickupAddressId);
+    const providerPayload = toProviderCreateOrderPayload(data, providerPickupAddress);
     const result = await courierApi.createOrder(providerPayload);
     if (!result.status) throw new Error(result.msg || "Courier API order creation failed");
     const order = makeOrderFromPayload(data, getProviderOrderId(result), getProviderAwb(result));
