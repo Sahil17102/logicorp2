@@ -395,6 +395,27 @@ function makeOrderFromPayload(
   };
 }
 
+async function createDirectCourierOrder(data: CreateOrderPayload): Promise<Order> {
+  const providerPickupAddressId = await resolveProviderPickupAddressId(data.pickupAddressId);
+  const providerPayload = toProviderCreateOrderPayload(data, providerPickupAddressId);
+  const result = await courierApi.createOrder(providerPayload);
+  if (!result.status) throw new Error(result.msg || "Courier API order creation failed");
+  const order = makeOrderFromPayload(data, getProviderOrderId(result), getProviderAwb(result));
+  const existing = courierApi.readStoredOrders<Order & { providerOrderId: string }>();
+  courierApi.writeStoredOrders([order, ...existing.filter((item) => item.id !== order.id)]);
+  return order;
+}
+
+function isNetworkError(err: unknown): boolean {
+  return err instanceof Error && err.message.toLowerCase().includes("network");
+}
+
+function apiServerUnavailableError(): Error {
+  return new Error(
+    "Logicorp API server is not reachable. Deploy the logicorp-api Render service from render.yaml or set VITE_COURIER_EMAIL and VITE_COURIER_PASSWORD, then redeploy.",
+  );
+}
+
 function mapProviderOrder(raw: CourierRawOrder): Order {
   const status = mapProviderStatus(raw.status);
   const totalCharge = toNumber(raw.shipping_amount ?? raw.payment_amount);
@@ -499,18 +520,18 @@ export const ordersApi = {
         );
       }
 
-      const providerPickupAddressId = await resolveProviderPickupAddressId(data.pickupAddressId);
-      const providerPayload = toProviderCreateOrderPayload(data, providerPickupAddressId);
-      const result = await courierApi.createOrder(providerPayload);
-      if (!result.status) throw new Error(result.msg || "Courier API order creation failed");
-      const order = makeOrderFromPayload(data, getProviderOrderId(result), getProviderAwb(result));
-      const existing = courierApi.readStoredOrders<Order & { providerOrderId: string }>();
-      courierApi.writeStoredOrders([order, ...existing.filter((item) => item.id !== order.id)]);
-      return order;
+      return createDirectCourierOrder(data);
     }
 
-    const { data: result } = await api.post("/orders", data);
-    return result.order as Order;
+    try {
+      const { data: result } = await api.post("/orders", data);
+      if (!result?.order) throw apiServerUnavailableError();
+      return result.order as Order;
+    } catch (err) {
+      if (isCourierApiConfigured()) return createDirectCourierOrder(data);
+      if (isNetworkError(err)) throw apiServerUnavailableError();
+      throw err;
+    }
   },
 
   getAll: async (params?: OrderListParams): Promise<OrderListResponse> => {
