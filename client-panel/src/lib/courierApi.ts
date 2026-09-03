@@ -17,13 +17,13 @@ const courierApiFlag = import.meta.env.VITE_COURIER_API_ENABLED;
 let inMemoryToken: string | null = courierApiToken || null;
 
 export function isCourierApiConfigured(): boolean {
-  return Boolean(courierApiToken || (courierApiEmail && courierApiPassword));
+  return Boolean(courierApiToken || readStoredToken() || (courierApiEmail && courierApiPassword));
 }
 
 export function shouldUseCourierApi(): boolean {
   if (courierApiFlag === "true") return true;
   if (courierApiFlag === "false") return false;
-  return isCourierApiConfigured();
+  return isCourierApiConfigured() || !import.meta.env.VITE_API_URL;
 }
 
 function readStoredToken(): string | null {
@@ -116,7 +116,7 @@ async function ensureCourierToken(): Promise<string> {
 
   if (!courierApiEmail || !courierApiPassword) {
     throw new Error(
-      "Courier API credentials missing. Set VITE_COURIER_EMAIL and VITE_COURIER_PASSWORD.",
+      "Courier API credentials missing. Log in with courier credentials or set VITE_COURIER_EMAIL and VITE_COURIER_PASSWORD.",
     );
   }
 

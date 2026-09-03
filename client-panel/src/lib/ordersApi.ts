@@ -356,8 +356,13 @@ function mapProviderOrder(raw: CourierRawOrder): Order {
 }
 
 async function getProviderOrders(params?: OrderListParams): Promise<OrderListResponse> {
-  const response = await courierApi.getOrders();
-  let orders = (response.orders ?? []).map(mapProviderOrder);
+  let orders: Order[] = [];
+  try {
+    const response = await courierApi.getOrders();
+    orders = (response.orders ?? []).map(mapProviderOrder);
+  } catch {
+    orders = [];
+  }
 
   const storedOrders = courierApi.readStoredOrders<Order & { providerOrderId: string }>();
   const seen = new Set(orders.map((order) => order.id));

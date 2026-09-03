@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import { shouldUseCourierApi } from "@/lib/courierApi";
 import { isRecord, shouldUseStaticClientData } from "@/lib/staticMode";
 import { getRequiredDocuments } from "./config";
 import type { DocumentField, DocumentKey, KycRecord, KycResponse, KycSubmitPayload } from "./types";
@@ -42,22 +43,35 @@ function makeEmptyKyc(): KycRecord {
   };
 }
 
+function approveForCourierTestMode(kyc: KycRecord): KycRecord {
+  if (!shouldUseCourierApi()) return kyc;
+  return {
+    ...kyc,
+    businessStructure: kyc.businessStructure ?? "sole_proprietor",
+    status: "approved",
+    selfie: { ...kyc.selfie, status: "approved" },
+    panCard: { ...kyc.panCard, status: "approved" },
+    aadhaar: { ...kyc.aadhaar, status: "approved" },
+    cancelledCheque: { ...kyc.cancelledCheque, status: "approved" },
+  };
+}
+
 function readStaticKyc(): KycRecord {
   if (typeof window === "undefined") return makeEmptyKyc();
   const raw = localStorage.getItem(KYC_STORAGE_KEY);
   if (!raw) {
     const kyc = makeEmptyKyc();
     localStorage.setItem(KYC_STORAGE_KEY, JSON.stringify(kyc));
-    return kyc;
+    return approveForCourierTestMode(kyc);
   }
 
   try {
     const parsed = JSON.parse(raw) as KycRecord;
-    return { ...makeEmptyKyc(), ...parsed };
+    return approveForCourierTestMode({ ...makeEmptyKyc(), ...parsed });
   } catch {
     const kyc = makeEmptyKyc();
     localStorage.setItem(KYC_STORAGE_KEY, JSON.stringify(kyc));
-    return kyc;
+    return approveForCourierTestMode(kyc);
   }
 }
 
@@ -103,7 +117,7 @@ export const kycApi = {
   /** Fetch the current user's KYC record. Falls back to local demo KYC on static deploys. */
   get: async (): Promise<KycResponse> => {
     if (shouldUseStaticClientData()) {
-      return { success: true, kyc: readStaticKyc() };
+      return { success: true, kyc: approveForCourierTestMode(readStaticKyc()) };
     }
 
     try {

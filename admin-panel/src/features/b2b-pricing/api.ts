@@ -18,13 +18,18 @@ import type {
   B2bAvailableCourier,
 } from "./types";
 
+const useStaticPricingData =
+  !import.meta.env.VITE_API_URL || import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
+
 // ── Zones ──
 
 export const b2bZonesApi = {
   list: async (): Promise<{ data: B2bZone[] }> => {
+    if (useStaticPricingData) return { data: DEFAULT_B2B_ZONES };
+
     try {
       const { data } = await api.get("/b2b/zones");
-      return data.data?.length > 0 ? data : { data: DEFAULT_B2B_ZONES };
+      return Array.isArray(data?.data) && data.data.length > 0 ? data : { data: DEFAULT_B2B_ZONES };
     } catch {
       return { data: DEFAULT_B2B_ZONES };
     }
@@ -68,9 +73,11 @@ export const b2bPincodesApi = {
     page?: number;
     limit?: number;
   }): Promise<{ data: B2bPincode[]; pagination: B2bPagination }> => {
+    if (useStaticPricingData) return defaultB2bPincodes(params);
+
     try {
       const { data } = await api.get("/b2b/pincodes", { params });
-      return data.data?.length > 0 ? data : defaultB2bPincodes(params);
+      return Array.isArray(data?.data) && data.data.length > 0 ? data : defaultB2bPincodes(params);
     } catch {
       return defaultB2bPincodes(params);
     }
@@ -105,9 +112,11 @@ export const b2bZoneRatesApi = {
     originZone?: string;
     destinationZone?: string;
   }): Promise<{ data: B2bZoneRate[] }> => {
+    if (useStaticPricingData) return { data: defaultB2bZoneRates(params) };
+
     try {
       const { data } = await api.get("/b2b/zone-rates", { params });
-      return data.data?.length > 0 ? data : { data: defaultB2bZoneRates(params) };
+      return Array.isArray(data?.data) && data.data.length > 0 ? data : { data: defaultB2bZoneRates(params) };
     } catch {
       return { data: defaultB2bZoneRates(params) };
     }
@@ -135,9 +144,11 @@ export const b2bAdditionalChargesApi = {
     courier?: string;
     plan?: string;
   }): Promise<{ data: B2bAdditionalCharge[] }> => {
+    if (useStaticPricingData) return { data: defaultB2bAdditionalCharges(params) };
+
     try {
       const { data } = await api.get("/b2b/additional-charges", { params });
-      return data.data?.length > 0 ? data : { data: defaultB2bAdditionalCharges(params) };
+      return Array.isArray(data?.data) && data.data.length > 0 ? data : { data: defaultB2bAdditionalCharges(params) };
     } catch {
       return { data: defaultB2bAdditionalCharges(params) };
     }

@@ -37,6 +37,8 @@ const externalCourierApiEmail = import.meta.env.VITE_COURIER_EMAIL || "";
 const externalCourierApiPassword = import.meta.env.VITE_COURIER_PASSWORD || "";
 const externalCourierApiToken = import.meta.env.VITE_COURIER_API_TOKEN || "";
 const externalCourierApiFlag = import.meta.env.VITE_COURIER_API_ENABLED;
+const useStaticCourierData =
+  !import.meta.env.VITE_API_URL || import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
 
 let externalCourierToken: string | null = externalCourierApiToken || null;
 
@@ -137,15 +139,19 @@ async function listExternalCouriers(params?: ListCouriersParams): Promise<ListCo
 
 export const couriersApi = {
   list: async (params?: ListCouriersParams): Promise<ListCouriersResponse> => {
+    if (useStaticCourierData && !isExternalCourierApiEnabled()) {
+      return defaultCourierResponse(params);
+    }
+
     let response: ListCouriersResponse;
     try {
       const { data } = await api.get("/couriers", { params });
-      response = data as ListCouriersResponse;
+      response = Array.isArray(data?.couriers) ? data as ListCouriersResponse : defaultCourierResponse(params);
     } catch {
       response = defaultCourierResponse(params);
     }
 
-    if (response.couriers.length > 0) return response;
+    if (Array.isArray(response.couriers) && response.couriers.length > 0) return response;
 
     try {
       return (await listExternalCouriers(params)) ?? defaultCourierResponse(params);
