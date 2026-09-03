@@ -11,7 +11,9 @@ export function useCreateOrder() {
     onSuccess: (order) => {
       queryClient.invalidateQueries({ queryKey: ORDERS_QUERY_KEY });
       toast.success("Order created successfully", {
-        description: `AWB: ${order.awb} — ${order.serviceProvider}`,
+        description: order.awb
+          ? `AWB: ${order.awb} - ${order.courierName ?? order.serviceProvider}`
+          : `Saved locally - ${order.courierName ?? order.serviceProvider}. Courier credentials required for AWB.`,
       });
     },
     onError: (error: Error) => {

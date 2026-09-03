@@ -160,6 +160,20 @@ function mapProviderStatus(status?: string): Order["status"] {
   return "processing";
 }
 
+function isCourierCredentialsError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message.toLowerCase() : "";
+  const status = (err as { status?: number })?.status;
+  return status === 401 || message.includes("credential") || message.includes("unauthenticated");
+}
+
+function getCourierDisplayName(courierId: string): string {
+  const id = courierId.includes(":") ? courierId.split(":").pop() : courierId;
+  if (id === "80") return "DLVY Standard";
+  if (id === "152") return "Delhivery B2B";
+  if (id === "161") return "Shadowfax";
+  return courierId || "Teampafex";
+}
+
 function buildStats(orders: Order[]): OrderStats {
   const stats: OrderStats = {
     total: orders.length,
@@ -265,10 +279,10 @@ function makeOrderFromPayload(
     orderId: payload.orderId,
     orderType: payload.orderType,
     paymentType: payload.paymentType,
-    status: awb ? "booked" : "processing",
+    status: awb ? "booked" : "created",
     courierId: payload.courierId,
-    serviceProvider: payload.courierId,
-    courierName: payload.courierId,
+    serviceProvider: "teampafex",
+    courierName: getCourierDisplayName(payload.courierId),
     awb,
     providerOrderId,
     pickupAddressId: payload.pickupAddressId,
@@ -400,10 +414,20 @@ async function getProviderOrders(params?: OrderListParams): Promise<OrderListRes
 export const ordersApi = {
   create: async (data: CreateOrderPayload): Promise<Order> => {
     if (shouldUseCourierApi()) {
-      const providerPayload = toProviderCreateOrderPayload(data);
-      const result = await courierApi.createOrder(providerPayload);
-      if (!result.status) throw new Error(result.msg || "Courier API order creation failed");
-      const order = makeOrderFromPayload(data, String(result.order_id), result.awb_no || "");
+      try {
+        const providerPayload = toProviderCreateOrderPayload(data);
+        const result = await courierApi.createOrder(providerPayload);
+        if (!result.status) throw new Error(result.msg || "Courier API order creation failed");
+        const order = makeOrderFromPayload(data, String(result.order_id), result.awb_no || "");
+        const existing = courierApi.readStoredOrders<Order & { providerOrderId: string }>();
+        courierApi.writeStoredOrders([order, ...existing.filter((item) => item.id !== order.id)]);
+        return order;
+      } catch (err) {
+        if (!isCourierCredentialsError(err)) throw err;
+      }
+
+      const localId = `local-${Date.now()}`;
+      const order = makeOrderFromPayload(data, localId, "");
       const existing = courierApi.readStoredOrders<Order & { providerOrderId: string }>();
       courierApi.writeStoredOrders([order, ...existing.filter((item) => item.id !== order.id)]);
       return order;
