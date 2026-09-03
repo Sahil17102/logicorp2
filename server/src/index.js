@@ -82,6 +82,10 @@ function volumetricKg(length = 0, breadth = 0, height = 0) {
   return round((toNumber(length) * toNumber(breadth) * toNumber(height)) / 5000, 3);
 }
 
+function b2cChargeableKg(weight, length, breadth, height) {
+  return Math.max(kgFromGrams(weight), volumetricKg(length, breadth, height), 0.5);
+}
+
 function providerError(err) {
   const data = err?.response?.data;
   const message = data?.msg || data?.message || data?.error || err?.message || "Courier provider request failed";
@@ -594,7 +598,7 @@ function providerCreatePayload(order, providerAddressIds) {
   const providerRtoAddressId = providerAddressIds.rtoAddressId || providerPickupAddressId;
   const packages = isB2B && Array.isArray(order.packages) && order.packages.length
     ? order.packages.flatMap((pkg) => Array.from({ length: Math.max(1, Math.floor(pkg.quantity ?? 1)) }, () => packagePayload(pkg)))
-    : [packagePayload({ weightKg: kgFromGrams(order.weight), length: order.length, breadth: order.breadth, height: order.height })];
+    : [packagePayload({ weightKg: b2cChargeableKg(order.weight, order.length, order.breadth, order.height), length: order.length, breadth: order.breadth, height: order.height })];
   const totalWeight = round(packages.reduce((sum, pkg) => sum + toNumber(pkg.total_weight ?? pkg.weight), 0), 3);
   const totalVolumetricWeight = round(packages.reduce((sum, pkg) => sum + toNumber(pkg.volumetric_weight), 0), 3);
   const products = (order.products || []).map((product) => ({
@@ -870,9 +874,7 @@ function adjustWallet(userId, payload) {
 }
 
 function fallbackB2cRates(params) {
-  const actualKg = kgFromGrams(params.weight);
-  const volKg = volumetricKg(params.length, params.breadth, params.height);
-  const chargeableKg = Math.max(actualKg, volKg, 0.5);
+  const chargeableKg = b2cChargeableKg(params.weight, params.length, params.breadth, params.height);
   const slabs = Math.max(1, Math.ceil(chargeableKg / 0.5));
   const options = [
     { courierId: "80", name: "DLVY Standard", freightPerSlab: 54, rtoPerSlab: 48 },
@@ -935,10 +937,12 @@ function mapProviderRate(rate, index, params, orderType) {
 async function shippingRates(params, orderType) {
   const packages = orderType === "B2B" && Array.isArray(params.packages)
     ? params.packages.map((pkg) => packagePayload(pkg))
-    : [packagePayload({ weightKg: kgFromGrams(params.weight), length: params.length, breadth: params.breadth, height: params.height })];
+    : [packagePayload({ weightKg: b2cChargeableKg(params.weight, params.length, params.breadth, params.height), length: params.length, breadth: params.breadth, height: params.height })];
   const totalWeight = round(packages.reduce((sum, pkg) => sum + toNumber(pkg.total_weight ?? pkg.weight), 0), 3);
   const totalVolumetricWeight = round(packages.reduce((sum, pkg) => sum + toNumber(pkg.volumetric_weight), 0), 3);
-  const chargeable = Math.max(totalWeight, totalVolumetricWeight);
+  const chargeable = orderType === "B2B"
+    ? Math.max(totalWeight, totalVolumetricWeight)
+    : Math.max(totalWeight, totalVolumetricWeight, 0.5);
   const response = await providerRequest("post", "/api/shipping_charges", {
     pickup_code: params.origin,
     delivery_code: params.destination,

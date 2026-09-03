@@ -176,6 +176,10 @@ function volumetricKg(length = 0, breadth = 0, height = 0): number {
   return round((length * breadth * height) / 5000, 3);
 }
 
+function b2cChargeableKg(weightG: number, length?: number, breadth?: number, height?: number): number {
+  return Math.max(kgFromGrams(weightG), volumetricKg(length, breadth, height), 0.5);
+}
+
 function makePackagePayload(pkg: {
   count?: number;
   weightKg: number;
@@ -323,7 +327,7 @@ async function enrichShippingRates(
 async function getCourierApiRates(params: AvailableCouriersParams): Promise<AvailableCourier[]> {
   const actualKg = kgFromGrams(params.weight);
   const volKg = volumetricKg(params.length, params.breadth, params.height);
-  const chargeableKg = Math.max(actualKg, volKg);
+  const chargeableKg = b2cChargeableKg(params.weight, params.length, params.breadth, params.height);
   const response = await courierApi.getShippingCharges({
     pickup_code: params.origin,
     delivery_code: params.destination,
@@ -338,7 +342,7 @@ async function getCourierApiRates(params: AvailableCouriersParams): Promise<Avai
     dimension_unit: "cm",
     packages: [
       makePackagePayload({
-        weightKg: actualKg,
+        weightKg: chargeableKg,
         length: params.length,
         breadth: params.breadth,
         height: params.height,

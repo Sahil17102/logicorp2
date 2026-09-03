@@ -136,6 +136,10 @@ function volumetricKg(length = 0, breadth = 0, height = 0): number {
   return round((length * breadth * height) / 5000);
 }
 
+function b2cChargeableKg(weightG: number, length?: number, breadth?: number, height?: number): number {
+  return Math.max(kgFromGrams(weightG), volumetricKg(length, breadth, height), 0.5);
+}
+
 function makeProviderPackage(input: {
   count?: number;
   weightKg: number;
@@ -299,7 +303,7 @@ function toProviderCreateOrderPayload(
       })
     : [
         makeProviderPackage({
-          weightKg: kgFromGrams(data.weight),
+          weightKg: b2cChargeableKg(data.weight, data.length, data.breadth, data.height),
           length: data.length,
           breadth: data.breadth,
           height: data.height,
