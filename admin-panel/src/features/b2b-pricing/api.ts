@@ -1,4 +1,10 @@
 import { api } from "@/lib/api";
+import {
+  DEFAULT_B2B_ZONES,
+  defaultB2bAdditionalCharges,
+  defaultB2bPincodes,
+  defaultB2bZoneRates,
+} from "../pricingDefaults";
 import type {
   B2bZone,
   B2bPincode,
@@ -16,8 +22,12 @@ import type {
 
 export const b2bZonesApi = {
   list: async (): Promise<{ data: B2bZone[] }> => {
-    const { data } = await api.get("/b2b/zones");
-    return data;
+    try {
+      const { data } = await api.get("/b2b/zones");
+      return data.data?.length > 0 ? data : { data: DEFAULT_B2B_ZONES };
+    } catch {
+      return { data: DEFAULT_B2B_ZONES };
+    }
   },
 
   create: async (payload: { code: string; name: string; description?: string }): Promise<{ data: B2bZone }> => {
@@ -58,8 +68,12 @@ export const b2bPincodesApi = {
     page?: number;
     limit?: number;
   }): Promise<{ data: B2bPincode[]; pagination: B2bPagination }> => {
-    const { data } = await api.get("/b2b/pincodes", { params });
-    return data;
+    try {
+      const { data } = await api.get("/b2b/pincodes", { params });
+      return data.data?.length > 0 ? data : defaultB2bPincodes(params);
+    } catch {
+      return defaultB2bPincodes(params);
+    }
   },
 
   create: async (payload: CreateB2bPincodePayload): Promise<{ data: B2bPincode }> => {
@@ -91,8 +105,12 @@ export const b2bZoneRatesApi = {
     originZone?: string;
     destinationZone?: string;
   }): Promise<{ data: B2bZoneRate[] }> => {
-    const { data } = await api.get("/b2b/zone-rates", { params });
-    return data;
+    try {
+      const { data } = await api.get("/b2b/zone-rates", { params });
+      return data.data?.length > 0 ? data : { data: defaultB2bZoneRates(params) };
+    } catch {
+      return { data: defaultB2bZoneRates(params) };
+    }
   },
 
   upsert: async (payload: UpsertB2bZoneRatePayload): Promise<{ data: B2bZoneRate }> => {
@@ -117,8 +135,12 @@ export const b2bAdditionalChargesApi = {
     courier?: string;
     plan?: string;
   }): Promise<{ data: B2bAdditionalCharge[] }> => {
-    const { data } = await api.get("/b2b/additional-charges", { params });
-    return data;
+    try {
+      const { data } = await api.get("/b2b/additional-charges", { params });
+      return data.data?.length > 0 ? data : { data: defaultB2bAdditionalCharges(params) };
+    } catch {
+      return { data: defaultB2bAdditionalCharges(params) };
+    }
   },
 
   upsert: async (payload: UpsertB2bAdditionalChargePayload): Promise<{ data: B2bAdditionalCharge }> => {

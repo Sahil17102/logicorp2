@@ -1,5 +1,6 @@
 import axios from "axios";
 import { api } from "@/lib/api";
+import { defaultCourierResponse } from "../pricingDefaults";
 import type { CreateCourierPayload, UpdateCourierPayload, ListCouriersResponse } from "./types";
 
 interface ListCouriersParams {
@@ -136,15 +137,20 @@ async function listExternalCouriers(params?: ListCouriersParams): Promise<ListCo
 
 export const couriersApi = {
   list: async (params?: ListCouriersParams): Promise<ListCouriersResponse> => {
-    const { data } = await api.get("/couriers", { params });
-    const response = data as ListCouriersResponse;
+    let response: ListCouriersResponse;
+    try {
+      const { data } = await api.get("/couriers", { params });
+      response = data as ListCouriersResponse;
+    } catch {
+      response = defaultCourierResponse(params);
+    }
 
     if (response.couriers.length > 0) return response;
 
     try {
-      return (await listExternalCouriers(params)) ?? response;
+      return (await listExternalCouriers(params)) ?? defaultCourierResponse(params);
     } catch {
-      return response;
+      return defaultCourierResponse(params);
     }
   },
 

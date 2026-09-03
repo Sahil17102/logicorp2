@@ -1,4 +1,9 @@
 import { api } from "@/lib/api";
+import {
+  defaultB2cPricingForCourier,
+  defaultB2cPricingResponse,
+  defaultB2cZonesResponse,
+} from "../pricingDefaults";
 import type {
   ListZonesResponse,
   CreateZonePayload,
@@ -16,8 +21,13 @@ export const b2cZonesApi = {
     page?: number;
     limit?: number;
   }): Promise<ListZonesResponse> => {
-    const { data } = await api.get("/b2c-zones", { params });
-    return data as ListZonesResponse;
+    try {
+      const { data } = await api.get("/b2c-zones", { params });
+      const response = data as ListZonesResponse;
+      return response.zones.length > 0 ? response : defaultB2cZonesResponse(params);
+    } catch {
+      return defaultB2cZonesResponse(params);
+    }
   },
 
   create: async (
@@ -55,25 +65,42 @@ export const b2cPricingApi = {
     mode?: string;
     minWeight?: number;
   }): Promise<ListPricingResponse> => {
-    const { data } = await api.get("/b2c-pricing", { params });
-    return data as ListPricingResponse;
+    try {
+      const { data } = await api.get("/b2c-pricing", { params });
+      const response = data as ListPricingResponse;
+      return response.pricing.length > 0 ? response : defaultB2cPricingResponse(params);
+    } catch {
+      return defaultB2cPricingResponse(params);
+    }
   },
 
   getByCourier: async (
     courierId: string,
     plan?: string,
   ): Promise<GetPricingByCourierResponse> => {
-    const { data } = await api.get(`/b2c-pricing/courier/${courierId}`, {
-      params: plan ? { plan } : undefined,
-    });
-    return data as GetPricingByCourierResponse;
+    try {
+      const { data } = await api.get(`/b2c-pricing/courier/${courierId}`, {
+        params: plan ? { plan } : undefined,
+      });
+      const response = data as GetPricingByCourierResponse;
+      if (response.pricing) return response;
+    } catch {
+      // Fall through to seed pricing.
+    }
+    const pricing = defaultB2cPricingForCourier(courierId).find((item) => !plan || item.plan === plan);
+    return { pricing: pricing ?? null };
   },
 
   getAllByCourier: async (
     courierId: string,
   ): Promise<{ pricing: B2cPricingItem[] }> => {
-    const { data } = await api.get(`/b2c-pricing/courier/${courierId}`);
-    return data as { pricing: B2cPricingItem[] };
+    try {
+      const { data } = await api.get(`/b2c-pricing/courier/${courierId}`);
+      const response = data as { pricing: B2cPricingItem[] };
+      return response.pricing.length > 0 ? response : { pricing: defaultB2cPricingForCourier(courierId) };
+    } catch {
+      return { pricing: defaultB2cPricingForCourier(courierId) };
+    }
   },
 
   upsert: async (
