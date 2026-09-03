@@ -196,7 +196,7 @@ function listStaticProviders(params?: { page?: number; limit?: number; configure
 
 export const serviceProvidersApi = {
   list: async (params?: { page?: number; limit?: number; configured?: boolean }): Promise<ListProvidersResponse> => {
-    if (!import.meta.env.VITE_API_URL || import.meta.env.VITE_STATIC_DATA_ENABLED === "true") {
+    if (import.meta.env.VITE_STATIC_DATA_ENABLED === "true") {
       return listStaticProviders(params);
     }
 

@@ -23,7 +23,7 @@ export function isCourierApiConfigured(): boolean {
 export function shouldUseCourierApi(): boolean {
   if (courierApiFlag === "true") return true;
   if (courierApiFlag === "false") return false;
-  return isCourierApiConfigured() || !import.meta.env.VITE_API_URL;
+  return isCourierApiConfigured();
 }
 
 function readStoredToken(): string | null {

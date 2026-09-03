@@ -37,8 +37,7 @@ const externalCourierApiEmail = import.meta.env.VITE_COURIER_EMAIL || "";
 const externalCourierApiPassword = import.meta.env.VITE_COURIER_PASSWORD || "";
 const externalCourierApiToken = import.meta.env.VITE_COURIER_API_TOKEN || "";
 const externalCourierApiFlag = import.meta.env.VITE_COURIER_API_ENABLED;
-const useStaticCourierData =
-  !import.meta.env.VITE_API_URL || import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
+const useStaticCourierData = import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
 
 let externalCourierToken: string | null = externalCourierApiToken || null;
 

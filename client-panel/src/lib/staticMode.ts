@@ -2,7 +2,7 @@ export function shouldUseStaticClientData(): boolean {
   const flag = import.meta.env.VITE_STATIC_DATA_ENABLED;
   if (flag === "true") return true;
   if (flag === "false") return false;
-  return !import.meta.env.VITE_API_URL;
+  return false;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

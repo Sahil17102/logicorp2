@@ -21,6 +21,9 @@ export function getAccessToken(): string | null {
 type SessionExpiredListener = () => void;
 let onSessionExpired: SessionExpiredListener | null = null;
 
+const DEFAULT_API_URL = "https://logicorp-api.onrender.com/api";
+const API_BASE_URL = import.meta.env.VITE_API_URL || DEFAULT_API_URL;
+
 export function setOnSessionExpired(listener: SessionExpiredListener | null): void {
   onSessionExpired = listener;
 }
@@ -28,7 +31,7 @@ export function setOnSessionExpired(listener: SessionExpiredListener | null): vo
 // ── Axios instance ──
 
 export const api = axios.create({
-  baseURL: import.meta.env.DEV ? "/api" : (import.meta.env.VITE_API_URL ?? "/api"),
+  baseURL: import.meta.env.DEV ? "/api" : API_BASE_URL,
   timeout: 60_000,
   headers: { "Content-Type": "application/json" },
   withCredentials: true, // required for the httpOnly refresh cookie to be sent
