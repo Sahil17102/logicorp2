@@ -12,6 +12,11 @@ Required Render environment variables:
 - `CORS_ORIGIN` optional, comma-separated client/admin origins or `*`
 - `DATA_DIR` optional persistent disk path, for example `/var/data`
 
-Set both frontends to:
+For the current Render backend service, set both frontends to:
 
-- `VITE_API_URL=https://<logicorp-api-service>.onrender.com/api`
+- `VITE_API_URL=https://logicorp290.onrender.com/api`
+
+Render web service commands:
+
+- Build: `npm run render:build`
+- Start: `npm run render:start`

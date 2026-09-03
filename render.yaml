@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: logicorp-api
+    name: logicorp290
     env: node
     buildCommand: npm --prefix server install && npm --prefix client-panel install && npm --prefix client-panel run build
     startCommand: npm --prefix server start

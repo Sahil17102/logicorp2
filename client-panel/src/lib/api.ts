@@ -21,7 +21,7 @@ export function getAccessToken(): string | null {
 type SessionExpiredListener = () => void;
 let onSessionExpired: SessionExpiredListener | null = null;
 
-const DEFAULT_API_URL = "https://logicorp-api.onrender.com/api";
+const DEFAULT_API_URL = "https://logicorp290.onrender.com/api";
 const API_BASE_URL = import.meta.env.VITE_API_URL || DEFAULT_API_URL;
 
 export function setOnSessionExpired(listener: SessionExpiredListener | null): void {
