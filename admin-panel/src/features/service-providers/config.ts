@@ -12,10 +12,11 @@ export const COMMON_FIELD_PRESETS: CredentialFieldDef[] = [
   { key: "username", label: "Username", type: "text", required: false },
   { key: "password", label: "Password", type: "password", required: false },
   { key: "clientId", label: "Client ID", type: "text", required: false },
-  { key: "accessToken", label: "Access Token", type: "password", required: false },
   { key: "webhookSecret", label: "Webhook Secret", type: "password", required: false },
   { key: "defaultPincode", label: "Default Pincode", type: "text", required: false },
 ];
+
+const INTERNAL_CREDENTIAL_KEYS = new Set(["accessToken", "jwtToken", "token", "access_token"]);
 
 /** Slugify a human-entered field name into a camelCase credential key. */
 export function toFieldKey(label: string): string {
@@ -43,6 +44,7 @@ export function resolveBlockData(block: CredentialBlock) {
   }
 
   for (const [key, val] of Object.entries(block.values)) {
+    if (INTERNAL_CREDENTIAL_KEYS.has(key)) continue;
     if (!definedKeys.has(key)) {
       const preset = COMMON_FIELD_PRESETS.find((p) => p.key === key);
       extraFields.push(preset ?? { key, label: key, type: "text", required: false });

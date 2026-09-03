@@ -73,23 +73,21 @@ function defaultCredentials(): ProviderCredentialsResponse {
     { key: "baseUrl", label: "Base URL", type: "text", required: true },
     { key: "email", label: "Email", type: "text", required: true },
     { key: "password", label: "Password", type: "password", required: true },
-    { key: "accessToken", label: "Access Token", type: "password", required: false },
   ];
   const values = {
     baseUrl: TEAMPAFEX_BASE_URL,
     email: "support@logicorp.in",
     password: "********",
-    accessToken: "",
   };
   return {
     b2c: {
       fields,
-      description: "Teampafex B2C courier API credentials",
+      description: "Teampafex B2C login payload credentials",
       values,
     },
     b2b: {
       fields,
-      description: "Teampafex B2B courier API credentials",
+      description: "Teampafex B2B login payload credentials",
       values,
       sameAsB2c: true,
     },

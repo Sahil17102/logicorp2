@@ -342,7 +342,6 @@ function credentialFields() {
     { key: "baseUrl", label: "Base URL", type: "text", required: true },
     { key: "email", label: "Email", type: "text", required: true },
     { key: "password", label: "Password", type: "password", required: true },
-    { key: "jwtToken", label: "JWT Token", type: "password", required: false },
   ];
 }
 
@@ -352,12 +351,12 @@ function defaultProviderCredentials() {
   return {
     b2c: {
       fields,
-      description: "Teampafex B2C courier API credentials",
+      description: "Teampafex B2C login payload credentials",
       values,
     },
     b2b: {
       fields,
-      description: "Teampafex B2B courier API credentials",
+      description: "Teampafex B2B login payload credentials",
       values,
       sameAsB2c: true,
     },
@@ -401,8 +400,9 @@ function ensureProviderCredentialsSeed(data) {
 function redactedCredentials(credentials) {
   const redactBlock = (block) => {
     const values = { ...(block.values || {}) };
-    ["password", "accessToken", "jwtToken", "token"].forEach((key) => {
-      if (values[key]) values[key] = "********";
+    if (values.password) values.password = "********";
+    ["accessToken", "jwtToken", "token", "access_token"].forEach((key) => {
+      delete values[key];
     });
     return { ...block, values };
   };

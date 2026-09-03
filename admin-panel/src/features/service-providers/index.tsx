@@ -207,7 +207,7 @@ export default function ServiceProvidersPage() {
 
       <div className="flex items-center gap-2 text-sm text-muted bg-primary-bg border border-primary/10 rounded-lg px-3.5 py-2.5">
         <Info size={15} className="text-primary shrink-0" />
-        <span className="hidden sm:inline">Expand a row to view or edit credentials (API keys, tokens, passwords) for each provider.</span>
+        <span className="hidden sm:inline">Expand a row to view or edit login credentials for each provider.</span>
         <span className="sm:hidden">Tap "View details" on a card to view or edit credentials for each provider.</span>
       </div>
 
