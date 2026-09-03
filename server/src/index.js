@@ -740,6 +740,116 @@ function listResponse(orders, query = {}) {
   };
 }
 
+function walletIdForUser(userId = defaultSeller().id) {
+  return `wallet-${userId}`;
+}
+
+function defaultWalletCredit() {
+  const createdAt = nowIso();
+  return {
+    id: "wallet-seed-sahil-1000",
+    walletId: walletIdForUser(defaultSeller().id),
+    amount: 1000,
+    currency: "INR",
+    type: "credit",
+    reason: "admin_credit",
+    ref: "LGC-SEED-1000",
+    meta: { source: "logicorp_seed", notes: "Initial test balance for Sahil Mittal" },
+    createdAt,
+  };
+}
+
+function ensureWalletSeed(data) {
+  const seed = defaultWalletCredit();
+  const transactions = Array.isArray(data.walletTransactions) ? data.walletTransactions : [];
+  const hasSeed = transactions.some((transaction) => transaction.id === seed.id || transaction.ref === seed.ref);
+  data.walletTransactions = hasSeed ? transactions : [seed, ...transactions];
+  return hasSeed ? data : writeData(data);
+}
+
+function balanceForUser(userId, transactions) {
+  const walletId = walletIdForUser(userId);
+  return round(
+    transactions
+      .filter((transaction) => transaction.walletId === walletId)
+      .reduce((sum, transaction) => (
+        transaction.type === "credit" ? sum + toNumber(transaction.amount) : sum - toNumber(transaction.amount)
+      ), 0),
+  );
+}
+
+function walletForUser(userId) {
+  const user = defaultSeller();
+  const data = ensureWalletSeed(readData());
+  const balance = balanceForUser(userId, data.walletTransactions || []);
+  return {
+    id: walletIdForUser(userId),
+    userId,
+    userName: user.name,
+    userEmail: user.email,
+    userPhone: user.phone,
+    businessName: user.businessName,
+    balance,
+    currency: "INR",
+    plan: user.plan,
+    isActive: user.isActive,
+    createdAt: user.createdAt,
+    updatedAt: nowIso(),
+  };
+}
+
+function walletTransactionsResponse(userId, query = {}) {
+  const walletId = walletIdForUser(userId);
+  const all = ensureWalletSeed(readData()).walletTransactions || [];
+  let filtered = all.filter((transaction) => transaction.walletId === walletId);
+  if (query.type) filtered = filtered.filter((transaction) => transaction.type === query.type);
+  if (query.dateFrom) {
+    const from = new Date(`${query.dateFrom}T00:00:00`).getTime();
+    filtered = filtered.filter((transaction) => new Date(transaction.createdAt).getTime() >= from);
+  }
+  if (query.dateTo) {
+    const to = new Date(`${query.dateTo}T23:59:59`).getTime();
+    filtered = filtered.filter((transaction) => new Date(transaction.createdAt).getTime() <= to);
+  }
+  const direction = query.sortOrder === "asc" ? 1 : -1;
+  filtered.sort((a, b) => {
+    if (query.sortField === "amount") return (toNumber(a.amount) - toNumber(b.amount)) * direction;
+    return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * direction;
+  });
+  const page = Math.max(1, Number(query.page || 1));
+  const limit = Math.max(1, Number(query.limit || 20));
+  const start = (page - 1) * limit;
+  const totalCredits = filtered.filter((transaction) => transaction.type === "credit").reduce((sum, transaction) => sum + toNumber(transaction.amount), 0);
+  const totalDebits = filtered.filter((transaction) => transaction.type === "debit").reduce((sum, transaction) => sum + toNumber(transaction.amount), 0);
+  return {
+    transactions: filtered.slice(start, start + limit),
+    pagination: { page, limit, total: filtered.length, totalPages: Math.max(1, Math.ceil(filtered.length / limit)) },
+    stats: { totalCredits: round(totalCredits), totalDebits: round(totalDebits) },
+    courierOptions: [],
+  };
+}
+
+function adjustWallet(userId, payload) {
+  const amount = round(toNumber(payload.amount));
+  if (amount <= 0) throw Object.assign(new Error("Wallet amount must be greater than zero"), { status: 400 });
+  const type = payload.type === "debit" ? "debit" : "credit";
+  const data = ensureWalletSeed(readData());
+  const transaction = {
+    id: `wallet-txn-${Date.now()}`,
+    walletId: walletIdForUser(userId),
+    amount,
+    currency: "INR",
+    type,
+    reason: payload.reason || "admin_credit",
+    ref: `LGC-WLT-${Date.now().toString().slice(-8)}`,
+    meta: { notes: payload.notes || "", source: "admin_adjustment" },
+    createdAt: nowIso(),
+  };
+  data.walletTransactions = [transaction, ...(data.walletTransactions || [])];
+  writeData(data);
+  return { transaction, wallet: walletForUser(userId) };
+}
+
 function fallbackB2cRates(params) {
   const actualKg = kgFromGrams(params.weight);
   const volKg = volumetricKg(params.length, params.breadth, params.height);
@@ -945,6 +1055,42 @@ app.get("/api/orders/:id", (req, res) => {
   return res.json({ order });
 });
 
+app.get("/api/wallet/balance", (_req, res) => {
+  const wallet = walletForUser(defaultSeller().id);
+  res.json({ balance: wallet.balance, currency: wallet.currency });
+});
+
+app.get("/api/wallet/transactions", (req, res) => {
+  res.json(walletTransactionsResponse(defaultSeller().id, req.query));
+});
+
+app.post("/api/wallet/recharge/create-order", (req, res) => {
+  const amount = round(toNumber(req.body?.amount));
+  if (amount <= 0) return res.status(400).json({ error: "Recharge amount must be greater than zero" });
+  return res.json({
+    orderId: `demo_order_${Date.now()}`,
+    amount,
+    currency: "INR",
+    keyId: "",
+  });
+});
+
+app.post("/api/wallet/recharge/verify", (req, res, next) => {
+  try {
+    const amount = round(toNumber(req.body?.amount || req.body?.razorpaySignature));
+    const result = amount > 0
+      ? adjustWallet(defaultSeller().id, { type: "credit", amount, reason: "wallet_recharge", notes: "Wallet recharge verified" })
+      : { wallet: walletForUser(defaultSeller().id) };
+    return res.json({
+      message: amount > 0 ? "Wallet recharged" : "Wallet balance unchanged",
+      balance: result.wallet.balance,
+      creditedAmount: amount > 0 ? amount : 0,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 app.get("/api/admin/orders", (req, res) => {
   res.json(listResponse(readData().orders || [], req.query));
 });
@@ -953,6 +1099,47 @@ app.get("/api/admin/orders/:id", (req, res) => {
   const order = (readData().orders || []).find((item) => item.id === req.params.id || item.orderId === req.params.id || item.providerOrderId === req.params.id);
   if (!order) return res.status(404).json({ error: "Order not found" });
   return res.json({ order });
+});
+
+app.get("/api/admin/wallets", (req, res) => {
+  const wallet = walletForUser(defaultSeller().id);
+  const wallets = req.query.search
+    ? [wallet].filter((item) =>
+        [item.userName, item.userEmail, item.userPhone, item.businessName]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(String(req.query.search).toLowerCase())),
+      )
+    : [wallet];
+  res.json({
+    wallets,
+    pagination: { page: 1, limit: Number(req.query.limit || 20), total: wallets.length, totalPages: 1 },
+    stats: {
+      totalWallets: wallets.length,
+      totalBalance: wallets.reduce((sum, item) => sum + toNumber(item.balance), 0),
+      walletsWithBalance: wallets.filter((item) => item.balance !== 0).length,
+      walletsEmpty: wallets.filter((item) => item.balance === 0).length,
+    },
+  });
+});
+
+app.get("/api/admin/wallets/:userId", (req, res) => {
+  if (req.params.userId !== defaultSeller().id) return res.status(404).json({ error: "Wallet not found" });
+  return res.json({ wallet: walletForUser(req.params.userId) });
+});
+
+app.get("/api/admin/wallets/:userId/transactions", (req, res) => {
+  if (req.params.userId !== defaultSeller().id) return res.status(404).json({ error: "Wallet not found" });
+  return res.json(walletTransactionsResponse(req.params.userId, req.query));
+});
+
+app.post("/api/admin/wallets/:userId/adjust", (req, res, next) => {
+  try {
+    if (req.params.userId !== defaultSeller().id) return res.status(404).json({ error: "Wallet not found" });
+    const result = adjustWallet(req.params.userId, req.body || {});
+    return res.json({ message: "Wallet adjusted", wallet: result.wallet, transaction: result.transaction });
+  } catch (err) {
+    return next(err);
+  }
 });
 
 app.get("/api/admin/users", (req, res) => {
