@@ -23,7 +23,7 @@ export default function TransactionsDrawer({
   const [dateRange, setDateRange] = useState<[string?, string?]>([]);
 
   const { data, isLoading } = useWalletTransactions({
-    userId: userId ?? "",
+    userId: open ? userId ?? "" : "",
     type,
     dateFrom: dateRange[0],
     dateTo: dateRange[1],
@@ -97,7 +97,7 @@ export default function TransactionsDrawer({
       open={open}
       onClose={onClose}
       width={800}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="flex items-center gap-3 mb-4">
         <Select
@@ -134,7 +134,7 @@ export default function TransactionsDrawer({
         pagination={{
           current: page,
           pageSize: 15,
-          total: data?.pagination.total ?? 0,
+          total: data?.pagination?.total ?? 0,
           showTotal: (t: number) => `${t} transactions`,
           onChange: setPage,
           showSizeChanger: false,
