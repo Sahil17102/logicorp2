@@ -122,16 +122,33 @@ export function UserSummaryTab({ userId }: UserSummaryTabProps) {
     );
   }
 
+  const orders = summary.orders ?? {
+    total: 0,
+    byStatus: {},
+    byType: { B2B: 0, B2C: 0 },
+    byPayment: { prepaid: 0, cod: 0 },
+  };
+  const revenue = summary.revenue ?? { total: 0, freight: 0, cod: 0 };
+  const remittance = summary.remittance ?? {
+    totalCodCollected: 0,
+    totalRemitted: 0,
+    pendingRemittance: 0,
+    pendingCount: 0,
+    creditedCount: 0,
+  };
+  const wallet = summary.wallet ?? { balance: 0, totalCredits: 0, totalDebits: 0 };
+  const topProviders = summary.topProviders ?? [];
+
   const deliveryRate =
-    summary.orders.total > 0
-      ? Math.round((summary.orders.byStatus.delivered / summary.orders.total) * 100)
+    orders.total > 0
+      ? Math.round(((orders.byStatus.delivered ?? 0) / orders.total) * 100)
       : 0;
 
   const totalActive = PIPELINE_STEPS.reduce(
-    (acc, s) => acc + (summary.orders.byStatus[s.status] ?? 0),
+    (acc, s) => acc + (orders.byStatus[s.status] ?? 0),
     0,
   );
-  const pending = summary.orders.byStatus.created ?? 0;
+  const pending = orders.byStatus.created ?? 0;
 
   return (
     <div className="space-y-4 pt-1">
@@ -143,24 +160,24 @@ export function UserSummaryTab({ userId }: UserSummaryTabProps) {
             iconColor: "text-blue-600 dark:text-blue-400",
             bgColor: "bg-blue-50 dark:bg-blue-500/10",
             label: "Total Orders",
-            value: summary.orders.total.toLocaleString("en-IN"),
-            sub: `${summary.orders.byType.B2C} B2C · ${summary.orders.byType.B2B} B2B`,
+            value: orders.total.toLocaleString("en-IN"),
+            sub: `${orders.byType.B2C} B2C · ${orders.byType.B2B} B2B`,
           },
           {
             icon: <IndianRupee size={15} />,
             iconColor: "text-emerald-600 dark:text-emerald-400",
             bgColor: "bg-emerald-50 dark:bg-emerald-500/10",
             label: "Total Revenue",
-            value: formatCurrency(summary.revenue.total),
-            sub: `Freight ${formatCurrency(summary.revenue.freight)}`,
+            value: formatCurrency(revenue.total),
+            sub: `Freight ${formatCurrency(revenue.freight)}`,
           },
           {
             icon: <Wallet size={15} />,
             iconColor: "text-violet-600 dark:text-violet-400",
             bgColor: "bg-violet-50 dark:bg-violet-500/10",
             label: "Wallet Balance",
-            value: formatCurrency(summary.wallet.balance),
-            sub: `${formatCurrency(summary.wallet.totalCredits)} in · ${formatCurrency(summary.wallet.totalDebits)} out`,
+            value: formatCurrency(wallet.balance),
+            sub: `${formatCurrency(wallet.totalCredits)} in · ${formatCurrency(wallet.totalDebits)} out`,
           },
           {
             icon: <TrendingUp size={15} />,
@@ -168,7 +185,7 @@ export function UserSummaryTab({ userId }: UserSummaryTabProps) {
             bgColor: "bg-green-50 dark:bg-green-500/10",
             label: "Delivery Rate",
             value: `${deliveryRate}%`,
-            sub: `${summary.orders.byStatus.delivered ?? 0} of ${summary.orders.total} delivered`,
+            sub: `${orders.byStatus.delivered ?? 0} of ${orders.total} delivered`,
           },
         ].map((card) => (
           <div
@@ -206,7 +223,7 @@ export function UserSummaryTab({ userId }: UserSummaryTabProps) {
         </div>
         <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
           {PIPELINE_STEPS.map((step, i) => {
-            const count = summary.orders.byStatus[step.status] ?? 0;
+            const count = orders.byStatus[step.status] ?? 0;
             const cfg = STATUS_CONFIG[step.status];
             const hasOrders = count > 0;
             return (
@@ -250,12 +267,12 @@ export function UserSummaryTab({ userId }: UserSummaryTabProps) {
           <div className="space-y-3">
             {OUTCOME_GROUPS.map((group) => {
               const count = group.statuses.reduce(
-                (acc, s) => acc + (summary.orders.byStatus[s] ?? 0),
+                (acc, s) => acc + (orders.byStatus[s] ?? 0),
                 0,
               );
               const pct =
-                summary.orders.total > 0
-                  ? (count / summary.orders.total) * 100
+                orders.total > 0
+                  ? (count / orders.total) * 100
                   : 0;
               return (
                 <div key={group.label}>
@@ -283,7 +300,7 @@ export function UserSummaryTab({ userId }: UserSummaryTabProps) {
                   {group.statuses.length > 1 && count > 0 && (
                     <div className="flex gap-1.5 mt-1.5">
                       {group.statuses.map((s) => {
-                        const c = summary.orders.byStatus[s] ?? 0;
+                        const c = orders.byStatus[s] ?? 0;
                         if (c === 0) return null;
                         const cfg = STATUS_CONFIG[s];
                         return (
@@ -314,23 +331,23 @@ export function UserSummaryTab({ userId }: UserSummaryTabProps) {
             <div className="flex items-center justify-between rounded-lg bg-green-50 dark:bg-green-500/5 border border-green-200/60 dark:border-green-500/10 px-3 py-2.5">
               <span className="text-xs text-muted font-medium">Prepaid</span>
               <span className="text-sm font-semibold text-foreground tabular-nums">
-                {summary.orders.byPayment.prepaid.toLocaleString("en-IN")}
+                {orders.byPayment.prepaid.toLocaleString("en-IN")}
               </span>
             </div>
             <div className="flex items-center justify-between rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200/60 dark:border-amber-500/10 px-3 py-2.5">
               <span className="text-xs text-muted font-medium">COD</span>
               <span className="text-sm font-semibold text-foreground tabular-nums">
-                {summary.orders.byPayment.cod.toLocaleString("en-IN")}
+                {orders.byPayment.cod.toLocaleString("en-IN")}
               </span>
             </div>
             <div className="border-t border-border-light/60 pt-2.5">
               <span className="text-[11px] text-muted font-medium">Order Type</span>
               <div className="flex gap-2 mt-1.5">
                 <Tag color="purple" bordered={false} className="!text-xs !m-0">
-                  B2C: {summary.orders.byType.B2C}
+                  B2C: {orders.byType.B2C}
                 </Tag>
                 <Tag color="blue" bordered={false} className="!text-xs !m-0">
-                  B2B: {summary.orders.byType.B2B}
+                  B2B: {orders.byType.B2B}
                 </Tag>
               </div>
             </div>
@@ -346,7 +363,7 @@ export function UserSummaryTab({ userId }: UserSummaryTabProps) {
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted font-medium">Total Collected</span>
               <span className="text-sm font-semibold text-foreground tabular-nums">
-                {formatCurrency(summary.remittance.totalCodCollected)}
+                {formatCurrency(remittance.totalCodCollected)}
               </span>
             </div>
             <div className="flex items-center justify-between">
@@ -355,9 +372,9 @@ export function UserSummaryTab({ userId }: UserSummaryTabProps) {
                 Remitted
               </span>
               <span className="text-sm font-semibold text-green-700 dark:text-green-400 tabular-nums">
-                {formatCurrency(summary.remittance.totalRemitted)}
+                {formatCurrency(remittance.totalRemitted)}
                 <span className="text-[10px] text-muted font-normal ml-1">
-                  ({summary.remittance.creditedCount})
+                  ({remittance.creditedCount})
                 </span>
               </span>
             </div>
@@ -367,9 +384,9 @@ export function UserSummaryTab({ userId }: UserSummaryTabProps) {
                 Pending
               </span>
               <span className="text-sm font-semibold text-amber-700 dark:text-amber-400 tabular-nums">
-                {formatCurrency(summary.remittance.pendingRemittance)}
+                {formatCurrency(remittance.pendingRemittance)}
                 <span className="text-[10px] text-muted font-normal ml-1">
-                  ({summary.remittance.pendingCount})
+                  ({remittance.pendingCount})
                 </span>
               </span>
             </div>
@@ -389,12 +406,12 @@ export function UserSummaryTab({ userId }: UserSummaryTabProps) {
               <span className="text-xs text-muted font-medium">Current Balance</span>
               <span
                 className={`text-sm font-semibold tabular-nums ${
-                  summary.wallet.balance >= 0
+                  wallet.balance >= 0
                     ? "text-green-700 dark:text-green-400"
                     : "text-red-700 dark:text-red-400"
                 }`}
               >
-                {formatCurrency(summary.wallet.balance)}
+                {formatCurrency(wallet.balance)}
               </span>
             </div>
             <div className="border-t border-border-light/60 pt-2 space-y-2">
@@ -404,7 +421,7 @@ export function UserSummaryTab({ userId }: UserSummaryTabProps) {
                   Total Credits
                 </span>
                 <span className="text-sm font-semibold text-green-700 dark:text-green-400 tabular-nums">
-                  {formatCurrency(summary.wallet.totalCredits)}
+                  {formatCurrency(wallet.totalCredits)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -413,7 +430,7 @@ export function UserSummaryTab({ userId }: UserSummaryTabProps) {
                   Total Debits
                 </span>
                 <span className="text-sm font-semibold text-red-700 dark:text-red-400 tabular-nums">
-                  {formatCurrency(summary.wallet.totalDebits)}
+                  {formatCurrency(wallet.totalDebits)}
                 </span>
               </div>
             </div>
@@ -425,15 +442,15 @@ export function UserSummaryTab({ userId }: UserSummaryTabProps) {
           <h3 className="text-[13px] font-semibold text-foreground mb-3">
             Top Courier Partners
           </h3>
-          {summary.topProviders.length === 0 ? (
+          {topProviders.length === 0 ? (
             <p className="text-xs text-muted">No shipments yet</p>
           ) : (
             <div className="space-y-2">
-              {summary.topProviders.map((p, i) => {
+              {topProviders.map((p, i) => {
                 const variant = SERVICE_PROVIDER_VARIANTS[p.provider];
                 const pct =
-                  summary.orders.total > 0
-                    ? Math.round((p.count / summary.orders.total) * 100)
+                  orders.total > 0
+                    ? Math.round((p.count / orders.total) * 100)
                     : 0;
                 return (
                   <div key={p.provider} className="flex items-center gap-2.5">

@@ -88,7 +88,8 @@ function normalizeUser(raw: unknown): UserListItem {
 }
 
 function normalizeSummary(raw: unknown): UserSummary {
-  const summary = asRecord(raw);
+  const response = asRecord(raw);
+  const summary = asRecord(response.summary ?? raw);
   const orders = asRecord(summary.orders);
   const revenue = asRecord(summary.revenue);
   const remittance = asRecord(summary.remittance);
