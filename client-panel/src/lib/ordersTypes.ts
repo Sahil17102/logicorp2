@@ -173,6 +173,7 @@ export interface CreateOrderPayload {
 
   // Courier & pickup
   courierId: string;
+  courierName?: string;
   pickupAddressId: string;
   preferredPickupDate: string;
   preferredPickupTime?: string;

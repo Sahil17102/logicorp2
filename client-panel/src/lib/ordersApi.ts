@@ -372,7 +372,7 @@ function makeOrderFromPayload(
     status: awb ? "booked" : "created",
     courierId: payload.courierId,
     serviceProvider: "teampafex",
-    courierName: getCourierDisplayName(payload.courierId),
+    courierName: payload.courierName || getCourierDisplayName(payload.courierId),
     awb,
     providerOrderId,
     pickupAddressId: payload.pickupAddressId,

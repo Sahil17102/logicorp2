@@ -252,6 +252,7 @@ export function CreateOrderPage() {
       codAmount,
       discount: data.discount > 0 ? data.discount : undefined,
       courierId: selectedCourier.courierId,
+      courierName: selectedCourier.name,
       pickupAddressId: data.pickupAddressId,
       preferredPickupDate: data.preferredPickupDate,
       preferredPickupTime: data.preferredPickupTime || undefined,
@@ -626,4 +627,3 @@ export function CreateOrderPage() {
     </FormProvider>
   );
 }
-

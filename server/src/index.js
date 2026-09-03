@@ -219,6 +219,39 @@ async function providerRequest(method, url, data) {
   }
 }
 
+async function providerCourierPartners(orderType = "B2C") {
+  const result = await providerRequest("get", "/api/courier_ids");
+  const partners = result.delivery_patners || result.delivery_partners || [];
+  return partners.filter((partner) => (
+    !partner.type || String(partner.type).toUpperCase() === String(orderType || "B2C").toUpperCase()
+  ));
+}
+
+function normalizeCourierName(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function matchingPartnerId(partners, courierName) {
+  const name = normalizeCourierName(courierName);
+  if (!name) return null;
+  const exact = partners.find((partner) => normalizeCourierName(partner.name) === name);
+  if (exact) return exact.id;
+  const loose = partners.find((partner) => {
+    const partnerName = normalizeCourierName(partner.name);
+    return partnerName && (partnerName.includes(name) || name.includes(partnerName));
+  });
+  return loose?.id || null;
+}
+
+async function resolveDeliveryPartnerId(courierId, courierName, orderType) {
+  const partners = await providerCourierPartners(orderType).catch(() => []);
+  const byName = matchingPartnerId(partners, courierName);
+  if (byName) return byName;
+  const id = String(courierId || "").split(":").pop();
+  const byId = partners.find((partner) => String(partner.id) === id);
+  return byId?.id || id || courierId;
+}
+
 function defaultPickupAddress() {
   const createdAt = nowIso();
   return {
@@ -592,7 +625,7 @@ function packagePayload(pkg) {
   };
 }
 
-function providerCreatePayload(order, providerAddressIds) {
+function providerCreatePayload(order, providerAddressIds, deliveryPartnerId = order.courierId) {
   const isB2B = order.orderType === "B2B";
   const providerPickupAddressId = providerAddressIds.pickupAddressId;
   const providerRtoAddressId = providerAddressIds.rtoAddressId || providerPickupAddressId;
@@ -638,7 +671,7 @@ function providerCreatePayload(order, providerAddressIds) {
     rto_address_id: providerRtoAddressId,
     submit_value: "Save Order",
     order_type: order.orderType,
-    delivery_partner_id: /^\d+$/.test(String(order.courierId)) ? Number(order.courierId) : order.courierId,
+    delivery_partner_id: /^\d+$/.test(String(deliveryPartnerId)) ? Number(deliveryPartnerId) : deliveryPartnerId,
   };
 }
 
@@ -907,14 +940,15 @@ function fallbackB2cRates(params) {
   });
 }
 
-function mapProviderRate(rate, index, params, orderType) {
+function mapProviderRate(rate, index, params, orderType, partners = []) {
   const name = String(rate.delivery_partner_name || rate.name || courierName(rate.delivery_partner_id || rate.courier_id || rate.id) || `Courier ${index + 1}`);
+  const partnerId = matchingPartnerId(partners, name);
   const freight = toNumber(rate.total_freight ?? rate.freight);
   const gst = toNumber(rate.gst);
   const cod = toNumber(rate.cod_charges);
   const total = toNumber(rate.total_charges ?? rate.total, freight + gst + cod);
   return {
-    courierId: String(rate.delivery_partner_id ?? rate.courier_id ?? rate.id ?? index + 1),
+    courierId: String(rate.delivery_partner_id ?? partnerId ?? rate.courier_id ?? rate.id ?? index + 1),
     name,
     serviceProvider: name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""),
     serviceProviderDisplayName: "Teampafex",
@@ -958,7 +992,8 @@ async function shippingRates(params, orderType) {
     packages,
     calculator_type: orderType,
   });
-  return (response.shipping_data || []).map((rate, index) => mapProviderRate(rate, index, { ...params, weight: chargeable * 1000 }, orderType));
+  const partners = await providerCourierPartners(orderType).catch(() => []);
+  return (response.shipping_data || []).map((rate, index) => mapProviderRate(rate, index, { ...params, weight: chargeable * 1000 }, orderType, partners));
 }
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
@@ -1055,7 +1090,8 @@ app.post("/api/rates/b2b/available", async (req, res) => {
 app.post("/api/orders", async (req, res, next) => {
   try {
     const providerAddressIds = await resolveProviderAddressIds(req.body.pickupAddressId);
-    const providerPayload = providerCreatePayload(req.body, providerAddressIds);
+    const deliveryPartnerId = await resolveDeliveryPartnerId(req.body.courierId, req.body.courierName, req.body.orderType);
+    const providerPayload = providerCreatePayload(req.body, providerAddressIds, deliveryPartnerId);
     const providerResult = await providerRequest("post", "/api/create_order", providerPayload);
     if (!providerResult.status) throw Object.assign(new Error(providerResult.msg || "Teampafex order creation failed"), { status: 400 });
     const order = orderFromPayload(req.body, providerResult, providerAddressIds.pickupAddressId);
