@@ -396,14 +396,23 @@ function makeOrderFromPayload(
 }
 
 async function createDirectCourierOrder(data: CreateOrderPayload): Promise<Order> {
-  const providerPickupAddressId = await resolveProviderPickupAddressId(data.pickupAddressId);
-  const providerPayload = toProviderCreateOrderPayload(data, providerPickupAddressId);
-  const result = await courierApi.createOrder(providerPayload);
-  if (!result.status) throw new Error(result.msg || "Courier API order creation failed");
-  const order = makeOrderFromPayload(data, getProviderOrderId(result), getProviderAwb(result));
-  const existing = courierApi.readStoredOrders<Order & { providerOrderId: string }>();
-  courierApi.writeStoredOrders([order, ...existing.filter((item) => item.id !== order.id)]);
-  return order;
+  try {
+    const providerPickupAddressId = await resolveProviderPickupAddressId(data.pickupAddressId);
+    const providerPayload = toProviderCreateOrderPayload(data, providerPickupAddressId);
+    const result = await courierApi.createOrder(providerPayload);
+    if (!result.status) throw new Error(result.msg || "Courier API order creation failed");
+    const order = makeOrderFromPayload(data, getProviderOrderId(result), getProviderAwb(result));
+    const existing = courierApi.readStoredOrders<Order & { providerOrderId: string }>();
+    courierApi.writeStoredOrders([order, ...existing.filter((item) => item.id !== order.id)]);
+    return order;
+  } catch (err) {
+    if (isNetworkError(err)) {
+      throw new Error(
+        "Real shipment was not sent to Teampafex because the browser cannot reach the courier API directly. Deploy the Logicorp API server and set TEAMPAFEX_EMAIL and TEAMPAFEX_PASSWORD there.",
+      );
+    }
+    throw err;
+  }
 }
 
 function isNetworkError(err: unknown): boolean {

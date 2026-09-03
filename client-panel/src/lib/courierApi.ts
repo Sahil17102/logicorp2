@@ -58,6 +58,11 @@ function writeJsonArray<T>(key: string, value: T[]): void {
 
 function normalizeApiError(err: unknown): Error {
   if (axios.isAxiosError(err)) {
+    if (!err.response && err.message.toLowerCase().includes("network")) {
+      return new Error(
+        "Real shipment was not sent to Teampafex because the browser cannot reach the courier API directly. Deploy the Logicorp API server and set TEAMPAFEX_EMAIL and TEAMPAFEX_PASSWORD there.",
+      );
+    }
     const data = err.response?.data as any;
     const validationErrors = data?.errors && typeof data.errors === "object"
       ? Object.values(data.errors).flat().join(", ")
