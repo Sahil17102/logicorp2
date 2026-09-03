@@ -7,27 +7,37 @@ const ONBOARDING_STORAGE_KEY = "logicorp-client-onboarding-complete";
 
 const DEMO_USER: User = {
   id: "demo-client-user",
-  email: "client@logicorp.in",
+  email: "support@logicorp.in",
   phone: null,
-  name: "Demo Seller",
-  firstName: "Demo",
-  lastName: "Seller",
+  name: "Sahil Mittal",
+  firstName: "Sahil",
+  lastName: "Mittal",
   role: "user",
   teamRole: "owner",
   parentUserId: null,
   isVerified: true,
-  onboardingComplete: false,
+  onboardingComplete: true,
   hasPassword: true,
 };
 
 function hasCompletedOnboarding(): boolean {
-  return localStorage.getItem(ONBOARDING_STORAGE_KEY) === "true";
+  return localStorage.getItem(ONBOARDING_STORAGE_KEY) !== "false";
 }
 
 function withOnboardingState(user: User): User {
+  const isLegacyDemoUser =
+    user.id === DEMO_USER.id ||
+    user.name === "Demo Seller" ||
+    user.email === "client@logicorp.in";
+
   return {
     ...user,
-    onboardingComplete: user.onboardingComplete && hasCompletedOnboarding(),
+    email: isLegacyDemoUser && user.email === "client@logicorp.in" ? DEMO_USER.email : user.email,
+    name: isLegacyDemoUser ? DEMO_USER.name : user.name || DEMO_USER.name,
+    firstName: isLegacyDemoUser ? DEMO_USER.firstName : user.firstName || DEMO_USER.firstName,
+    lastName: isLegacyDemoUser ? DEMO_USER.lastName : user.lastName || DEMO_USER.lastName,
+    isVerified: true,
+    onboardingComplete: true,
   };
 }
 
@@ -37,14 +47,12 @@ function readUser(): User | null {
   try {
     return withOnboardingState(JSON.parse(raw) as User);
   } catch {
-    return DEMO_USER;
+    return withOnboardingState(DEMO_USER);
   }
 }
 
 function persistUser(user: User): User {
-  if (user.onboardingComplete) {
-    localStorage.setItem(ONBOARDING_STORAGE_KEY, "true");
-  }
+  localStorage.setItem(ONBOARDING_STORAGE_KEY, "true");
   const normalized = withOnboardingState(user);
   localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(normalized));
   setAccessToken("static-client-token");
@@ -57,7 +65,7 @@ function makeLoginUser(identifier?: string): User {
     ...DEMO_USER,
     email: cleanIdentifier.includes("@") ? cleanIdentifier : DEMO_USER.email,
     phone: cleanIdentifier && !cleanIdentifier.includes("@") ? cleanIdentifier : DEMO_USER.phone,
-    onboardingComplete: hasCompletedOnboarding(),
+    onboardingComplete: true,
   };
 }
 

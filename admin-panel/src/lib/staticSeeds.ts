@@ -103,12 +103,12 @@ export function assignBasicPlan(): UserListItem {
   const existing = users.find((user) => user.id === "demo-client-user");
   const seller: UserListItem = {
     id: "demo-client-user",
-    name: "Demo Seller",
-    firstName: "Demo",
-    lastName: "Seller",
-    email: "client@logicorp.in",
+    name: "Sahil Mittal",
+    firstName: "Sahil",
+    lastName: "Mittal",
+    email: "support@logicorp.in",
     phone: "9876543210",
-    businessName: "Logicorp Demo Store",
+    businessName: "Sahil Mittal Store",
     pincode: "110001",
     city: "New Delhi",
     state: "Delhi",
