@@ -437,6 +437,42 @@ function serviceProviderPayload(credentials) {
   };
 }
 
+function providerConfigStatus() {
+  const data = ensureProviderCredentialsSeed(readData());
+  const saved = data.providerCredentials[TEAMPAFEX_PROVIDER_ID];
+  const b2c = effectiveCredentialValues(data, "b2c");
+  const b2b = effectiveCredentialValues(data, "b2b");
+  return {
+    provider: "teampafex",
+    providerBaseUrl: normalizeBaseUrl(b2c.baseUrl),
+    corsOrigin: process.env.CORS_ORIGIN || "*",
+    clientDistServed: fs.existsSync(CLIENT_DIST_DIR),
+    env: {
+      hasTeampafexEmail: Boolean(TEAMPAFEX_EMAIL),
+      hasTeampafexPassword: Boolean(TEAMPAFEX_PASSWORD),
+      hasTeampafexApiToken: Boolean(TEAMPAFEX_API_TOKEN),
+    },
+    savedCredentials: {
+      b2c: {
+        configured: hasUsableCredentials(saved.b2c.values),
+        hasEmail: Boolean(b2c.email),
+        hasPassword: Boolean(b2c.password),
+        hasJwtToken: Boolean(b2c.jwtToken),
+        hasAccessToken: Boolean(b2c.accessToken || b2c.token),
+      },
+      b2b: {
+        configured: saved.b2b.sameAsB2c ? hasUsableCredentials(saved.b2c.values) : hasUsableCredentials(saved.b2b.values),
+        sameAsB2c: saved.b2b.sameAsB2c ?? true,
+        hasEmail: Boolean(b2b.email),
+        hasPassword: Boolean(b2b.password),
+        hasJwtToken: Boolean(b2b.jwtToken),
+        hasAccessToken: Boolean(b2b.accessToken || b2b.token),
+      },
+    },
+    cachedJwtLoaded: Boolean(cachedToken),
+  };
+}
+
 async function updateStoredProviderCredentials(type, credentials) {
   const data = ensureProviderCredentialsSeed(readData());
   const current = data.providerCredentials[TEAMPAFEX_PROVIDER_ID];
@@ -755,6 +791,10 @@ async function shippingRates(params, orderType) {
 }
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+app.get("/api/health/config", (_req, res) => {
+  res.json({ ok: true, config: providerConfigStatus() });
+});
 
 app.get("/api/kyc", (_req, res) => {
   res.json({ success: true, kyc: ensureKycSeed(readData()).kyc });
