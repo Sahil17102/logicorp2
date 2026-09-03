@@ -1,6 +1,6 @@
 import axios, { AxiosError } from "axios";
 
-const DEFAULT_COURIER_API_URL = "https://shipment.samshtech.com";
+const DEFAULT_COURIER_API_URL = "https://teampafex.in";
 const TOKEN_STORAGE_KEY = "logicorp-courier-token";
 const PICKUP_STORAGE_KEY = "logicorp-courier-pickup-addresses";
 const ORDERS_STORAGE_KEY = "logicorp-courier-created-orders";
