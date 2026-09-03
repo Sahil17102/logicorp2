@@ -276,8 +276,18 @@ export interface CourierCreateOrderPayload {
 export interface CourierCreateOrderResponse {
   status: boolean;
   msg: string;
-  order_id: string | number;
+  order_id?: string | number;
+  id?: string | number;
   awb_no?: string;
+  awb?: string;
+  awb_number?: string;
+  data?: {
+    order_id?: string | number;
+    id?: string | number;
+    awb_no?: string;
+    awb?: string;
+    awb_number?: string;
+  };
 }
 
 export interface CourierCancelOrderResponse {

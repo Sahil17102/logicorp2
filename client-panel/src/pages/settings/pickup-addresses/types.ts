@@ -34,6 +34,7 @@ export interface RtoAddress {
 
 export interface PickupAddress {
   id: string;
+  providerPickupAddressId?: string;
   nickname: string;
   contactName: string;
   phone: string;

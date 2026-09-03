@@ -3,9 +3,11 @@ import { downloadBlob } from "./utils";
 import type { Order, CreateOrderPayload, TrackingEvent } from "./ordersTypes";
 import {
   courierApi,
+  isCourierApiConfigured,
   shouldUseCourierApi,
   type CourierCreateOrderPayload,
   type CourierPackagePayload,
+  type CourierPickupAddressPayload,
   type CourierRawOrder,
 } from "./courierApi";
 
@@ -97,6 +99,21 @@ export interface OrderListResponse {
   orders: Order[];
   pagination: { page: number; limit: number; total: number; totalPages: number };
   stats: OrderStats;
+}
+
+interface StoredProviderPickupAddress {
+  id: string;
+  providerPickupAddressId?: string;
+  nickname?: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  [key: string]: unknown;
 }
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -194,7 +211,75 @@ function buildStats(orders: Order[]): OrderStats {
   return stats;
 }
 
-function toProviderCreateOrderPayload(data: CreateOrderPayload): CourierCreateOrderPayload {
+function isProviderId(value: string): boolean {
+  return /^\d+$/.test(value);
+}
+
+function findStoredPickupAddress(id: string): StoredProviderPickupAddress | undefined {
+  return courierApi
+    .readStoredPickupAddresses<StoredProviderPickupAddress>()
+    .find((address) => address.id === id || address.providerPickupAddressId === id);
+}
+
+function toPickupRegistrationPayload(address: StoredProviderPickupAddress): CourierPickupAddressPayload {
+  return {
+    address_nick_name: String(address.nickname || "Pickup Address"),
+    contact_name: String(address.contactName || "Warehouse Manager"),
+    phone: String(address.phone || ""),
+    email: typeof address.email === "string" && address.email ? address.email : undefined,
+    address_line_1: String(address.addressLine1 || ""),
+    address_line_2: typeof address.addressLine2 === "string" && address.addressLine2 ? address.addressLine2 : undefined,
+    pincode: String(address.pincode || ""),
+    city: String(address.city || ""),
+    state: String(address.state || ""),
+  };
+}
+
+async function resolveProviderPickupAddressId(pickupAddressId: string): Promise<string> {
+  if (isProviderId(pickupAddressId)) return pickupAddressId;
+
+  const address = findStoredPickupAddress(pickupAddressId);
+  if (!address) return pickupAddressId;
+  if (address.providerPickupAddressId && isProviderId(address.providerPickupAddressId)) {
+    return address.providerPickupAddressId;
+  }
+
+  const result = await courierApi.registerPickupAddress(toPickupRegistrationPayload(address));
+  if (!result.status || !result.pickup_address_id) {
+    throw new Error(result.msg || "Pickup address registration failed");
+  }
+
+  const providerPickupAddressId = String(result.pickup_address_id);
+  const addresses = courierApi.readStoredPickupAddresses<StoredProviderPickupAddress>();
+  courierApi.writeStoredPickupAddresses(
+    addresses.map((item) =>
+      item.id === address.id ? { ...item, providerPickupAddressId } : item,
+    ),
+  );
+  return providerPickupAddressId;
+}
+
+function getProviderOrderId(result: {
+  order_id?: string | number;
+  id?: string | number;
+  data?: { order_id?: string | number; id?: string | number };
+}): string {
+  return String(result.order_id ?? result.data?.order_id ?? result.id ?? result.data?.id ?? `provider-${Date.now()}`);
+}
+
+function getProviderAwb(result: {
+  awb_no?: string;
+  awb?: string;
+  awb_number?: string;
+  data?: { awb_no?: string; awb?: string; awb_number?: string };
+}): string {
+  return String(result.awb_no ?? result.data?.awb_no ?? result.awb ?? result.data?.awb ?? result.awb_number ?? result.data?.awb_number ?? "");
+}
+
+function toProviderCreateOrderPayload(
+  data: CreateOrderPayload,
+  providerPickupAddressId: string,
+): CourierCreateOrderPayload {
   const isB2B = data.orderType === "B2B";
   const packages = isB2B && data.packages?.length
     ? data.packages.flatMap((pkg) => {
@@ -255,7 +340,7 @@ function toProviderCreateOrderPayload(data: CreateOrderPayload): CourierCreateOr
     total_weight: String(totalWeight),
     total_volumetric_weight: String(totalVolumetricWeight),
     packages,
-    pickup_address_id: data.pickupAddressId,
+    pickup_address_id: providerPickupAddressId,
     order_type: data.orderType,
     delivery_partner_id: /^\d+$/.test(data.courierId) ? Number(data.courierId) : data.courierId,
   };
@@ -408,22 +493,17 @@ async function getProviderOrders(params?: OrderListParams): Promise<OrderListRes
 export const ordersApi = {
   create: async (data: CreateOrderPayload): Promise<Order> => {
     if (shouldUseCourierApi()) {
-      try {
-        const providerPayload = toProviderCreateOrderPayload(data);
-        const result = await courierApi.createOrder(providerPayload);
-        if (!result.status) throw new Error(result.msg || "Courier API order creation failed");
-        const order = makeOrderFromPayload(data, String(result.order_id), result.awb_no || "");
-        const existing = courierApi.readStoredOrders<Order & { providerOrderId: string }>();
-        courierApi.writeStoredOrders([order, ...existing.filter((item) => item.id !== order.id)]);
-        return order;
-      } catch {
-        // Keep the seller flow moving on static deploys when the live courier API
-        // rejects before issuing an AWB, usually because provider credentials are
-        // not present in the browser session.
+      if (!isCourierApiConfigured()) {
+        throw new Error(
+          "Real shipment was not sent to Teampafex. Configure VITE_COURIER_EMAIL and VITE_COURIER_PASSWORD on Render, then redeploy.",
+        );
       }
 
-      const localId = `local-${Date.now()}`;
-      const order = makeOrderFromPayload(data, localId, "");
+      const providerPickupAddressId = await resolveProviderPickupAddressId(data.pickupAddressId);
+      const providerPayload = toProviderCreateOrderPayload(data, providerPickupAddressId);
+      const result = await courierApi.createOrder(providerPayload);
+      if (!result.status) throw new Error(result.msg || "Courier API order creation failed");
+      const order = makeOrderFromPayload(data, getProviderOrderId(result), getProviderAwb(result));
       const existing = courierApi.readStoredOrders<Order & { providerOrderId: string }>();
       courierApi.writeStoredOrders([order, ...existing.filter((item) => item.id !== order.id)]);
       return order;

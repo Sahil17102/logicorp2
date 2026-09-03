@@ -168,7 +168,11 @@ async function registerProviderPickupAddress(
     state: payload.state,
   });
   if (!result.status) throw new Error(result.msg || "Pickup address registration failed");
-  return saveCourierPickupAddress(payload, String(result.pickup_address_id));
+  const providerPickupAddressId = String(result.pickup_address_id);
+  return {
+    ...saveCourierPickupAddress(payload, providerPickupAddressId),
+    providerPickupAddressId,
+  };
 }
 
 export const pickupAddressApi = {
