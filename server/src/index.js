@@ -145,6 +145,101 @@ function defaultPickupAddress() {
   };
 }
 
+function approvedDocument(url) {
+  return { url, status: "approved" };
+}
+
+function defaultKyc() {
+  const createdAt = nowIso();
+  return {
+    id: "kyc-sahil-mittal",
+    userId: "demo-client-user",
+    businessStructure: "sole_proprietor",
+    status: "approved",
+    selfie: approvedDocument("logicorp-approved://sahil-mittal/selfie"),
+    panCard: approvedDocument("logicorp-approved://sahil-mittal/pan-card"),
+    aadhaar: approvedDocument("logicorp-approved://sahil-mittal/aadhaar"),
+    cancelledCheque: approvedDocument("logicorp-approved://sahil-mittal/cancelled-cheque"),
+    boardResolution: { status: "not_uploaded" },
+    partnershipDeed: { status: "not_uploaded" },
+    llpAgreement: { status: "not_uploaded" },
+    companyAddressProof: { status: "not_uploaded" },
+    businessPan: { status: "not_uploaded" },
+    gstCertificate: { status: "not_uploaded" },
+    createdAt,
+    updatedAt: createdAt,
+  };
+}
+
+function approvedKyc(existing = {}) {
+  const fallback = defaultKyc();
+  return {
+    ...fallback,
+    ...existing,
+    id: existing.id || fallback.id,
+    userId: existing.userId || fallback.userId,
+    businessStructure: existing.businessStructure || fallback.businessStructure,
+    status: "approved",
+    selfie: { ...fallback.selfie, ...existing.selfie, status: "approved" },
+    panCard: { ...fallback.panCard, ...existing.panCard, status: "approved" },
+    aadhaar: { ...fallback.aadhaar, ...existing.aadhaar, status: "approved" },
+    cancelledCheque: { ...fallback.cancelledCheque, ...existing.cancelledCheque, status: "approved" },
+    boardResolution: existing.boardResolution || fallback.boardResolution,
+    partnershipDeed: existing.partnershipDeed || fallback.partnershipDeed,
+    llpAgreement: existing.llpAgreement || fallback.llpAgreement,
+    companyAddressProof: existing.companyAddressProof || fallback.companyAddressProof,
+    businessPan: existing.businessPan || fallback.businessPan,
+    gstCertificate: existing.gstCertificate || fallback.gstCertificate,
+    updatedAt: nowIso(),
+  };
+}
+
+function ensureKycSeed(data) {
+  if (
+    data.kyc?.status === "approved" &&
+    data.kyc?.businessStructure &&
+    data.kyc?.selfie?.status === "approved" &&
+    data.kyc?.panCard?.status === "approved" &&
+    data.kyc?.aadhaar?.status === "approved" &&
+    data.kyc?.cancelledCheque?.status === "approved"
+  ) {
+    return data;
+  }
+  const next = approvedKyc(data.kyc || {});
+  data.kyc = next;
+  return writeData(data);
+}
+
+function defaultSeller() {
+  const now = nowIso();
+  return {
+    id: "demo-client-user",
+    name: "Sahil Mittal",
+    firstName: "Sahil",
+    lastName: "Mittal",
+    email: "support@logicorp.in",
+    phone: "9876543210",
+    businessName: "Sahil Mittal Store",
+    pincode: "110001",
+    city: "New Delhi",
+    state: "Delhi",
+    website: "https://logicorp2.onrender.com",
+    supportEmail: "support@logicorp.in",
+    contactNumber: "9876543210",
+    address: "Connaught Place, New Delhi",
+    sellsOn: ["Website", "Shopify"],
+    monthlyShipmentVolume: "100-500",
+    lastLogin: now,
+    isActive: true,
+    onboardingComplete: true,
+    isVerified: true,
+    kycStatus: "approved",
+    plan: "basic",
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 function ensurePickupSeed(data) {
   if (data.pickupAddresses?.length) return data;
   data.pickupAddresses = [defaultPickupAddress()];
@@ -436,6 +531,21 @@ async function shippingRates(params, orderType) {
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
+app.get("/api/kyc", (_req, res) => {
+  res.json({ success: true, kyc: ensureKycSeed(readData()).kyc });
+});
+
+app.post("/api/kyc", (req, res) => {
+  const data = ensureKycSeed(readData());
+  data.kyc = approvedKyc({ ...data.kyc, ...req.body });
+  writeData(data);
+  res.json({ success: true, kyc: data.kyc });
+});
+
+app.post("/api/kyc/upload", (_req, res) => {
+  res.json({ success: true, kyc: ensureKycSeed(readData()).kyc });
+});
+
 app.get("/api/pickup-addresses", (_req, res) => {
   res.json({ addresses: ensurePickupSeed(readData()).pickupAddresses });
 });
@@ -540,6 +650,47 @@ app.get("/api/admin/orders/:id", (req, res) => {
   const order = (readData().orders || []).find((item) => item.id === req.params.id || item.orderId === req.params.id || item.providerOrderId === req.params.id);
   if (!order) return res.status(404).json({ error: "Order not found" });
   return res.json({ order });
+});
+
+app.get("/api/admin/users", (req, res) => {
+  const users = [defaultSeller()];
+  const page = Math.max(1, Number(req.query.page || 1));
+  const limit = Math.max(1, Number(req.query.limit || 20));
+  res.json({
+    users: users.slice((page - 1) * limit, page * limit),
+    pagination: { page, limit, total: users.length, totalPages: 1 },
+    stats: {
+      total: 1,
+      verified: 1,
+      onboarded: 1,
+      active: 1,
+      kycPending: 0,
+      kycVerified: 1,
+      inactive: 0,
+      notOnboarded: 0,
+      kycNotStarted: 0,
+    },
+  });
+});
+
+app.get("/api/admin/users/:userId", (req, res) => {
+  const user = defaultSeller();
+  if (req.params.userId !== user.id) return res.status(404).json({ error: "User not found" });
+  res.json({ user });
+});
+
+app.get("/api/admin/users/:userId/kyc", (req, res) => {
+  const kyc = ensureKycSeed(readData()).kyc;
+  if (req.params.userId !== kyc.userId) return res.status(404).json({ error: "KYC not found" });
+  res.json({ success: true, kyc });
+});
+
+app.post("/api/admin/kyc/:id/approve", (_req, res) => {
+  res.json({ success: true, kyc: ensureKycSeed(readData()).kyc });
+});
+
+app.post("/api/admin/kyc/:id/document/:key/approve", (_req, res) => {
+  res.json({ success: true, kyc: ensureKycSeed(readData()).kyc });
 });
 
 app.get("/api/admin/users/:userId/pickup-addresses", (_req, res) => {

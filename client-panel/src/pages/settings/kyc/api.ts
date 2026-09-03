@@ -1,5 +1,4 @@
 import { api } from "@/lib/api";
-import { shouldUseCourierApi } from "@/lib/courierApi";
 import { isRecord, shouldUseStaticClientData } from "@/lib/staticMode";
 import { getRequiredDocuments } from "./config";
 import type { DocumentField, DocumentKey, KycRecord, KycResponse, KycSubmitPayload } from "./types";
@@ -43,8 +42,7 @@ function makeEmptyKyc(): KycRecord {
   };
 }
 
-function approveForCourierTestMode(kyc: KycRecord): KycRecord {
-  if (!shouldUseCourierApi()) return kyc;
+function approveForLiveOrderSetup(kyc: KycRecord): KycRecord {
   return {
     ...kyc,
     businessStructure: kyc.businessStructure ?? "sole_proprietor",
@@ -62,16 +60,16 @@ function readStaticKyc(): KycRecord {
   if (!raw) {
     const kyc = makeEmptyKyc();
     localStorage.setItem(KYC_STORAGE_KEY, JSON.stringify(kyc));
-    return approveForCourierTestMode(kyc);
+    return approveForLiveOrderSetup(kyc);
   }
 
   try {
     const parsed = JSON.parse(raw) as KycRecord;
-    return approveForCourierTestMode({ ...makeEmptyKyc(), ...parsed });
+    return approveForLiveOrderSetup({ ...makeEmptyKyc(), ...parsed });
   } catch {
     const kyc = makeEmptyKyc();
     localStorage.setItem(KYC_STORAGE_KEY, JSON.stringify(kyc));
-    return approveForCourierTestMode(kyc);
+    return approveForLiveOrderSetup(kyc);
   }
 }
 
@@ -117,12 +115,14 @@ export const kycApi = {
   /** Fetch the current user's KYC record. Falls back to local demo KYC on static deploys. */
   get: async (): Promise<KycResponse> => {
     if (shouldUseStaticClientData()) {
-      return { success: true, kyc: approveForCourierTestMode(readStaticKyc()) };
+      return { success: true, kyc: readStaticKyc() };
     }
 
     try {
       const { data } = await api.get("/kyc");
-      return isKycResponse(data) ? data : { success: true, kyc: readStaticKyc() };
+      return isKycResponse(data)
+        ? { ...data, kyc: approveForLiveOrderSetup(data.kyc) }
+        : { success: true, kyc: readStaticKyc() };
     } catch {
       return { success: true, kyc: readStaticKyc() };
     }
