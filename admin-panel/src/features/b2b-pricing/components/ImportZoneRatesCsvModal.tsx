@@ -202,7 +202,7 @@ export default function ImportZoneRatesCsvModal({ open, onClose, couriers, zones
       open={open}
       onCancel={handleClose}
       width={760}
-      destroyOnClose
+      destroyOnHidden
       footer={
         step === "upload"
           ? null

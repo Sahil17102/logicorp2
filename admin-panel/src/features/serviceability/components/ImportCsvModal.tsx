@@ -159,7 +159,7 @@ export default function ImportCsvModal({ open, onClose }: Props) {
       open={open}
       onCancel={handleClose}
       width={680}
-      destroyOnClose
+      destroyOnHidden
       footer={
         step === "upload"
           ? null

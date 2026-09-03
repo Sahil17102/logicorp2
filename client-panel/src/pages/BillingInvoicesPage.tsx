@@ -382,7 +382,7 @@ function GenerateInvoiceModal({
       confirmLoading={generate.isPending}
       okText="Generate Invoice"
       okButtonProps={{ disabled: !period }}
-      destroyOnClose
+      destroyOnHidden
       styles={{ content: { ...themeVars, background: "var(--color-bg-elevated)" } }}
     >
       <div className="space-y-4">

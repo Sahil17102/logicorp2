@@ -93,7 +93,7 @@ export default function AddProviderModal({ open, onClose }: Props) {
       confirmLoading={createProvider.isPending}
       okText="Add Provider"
       width={560}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="mb-3">
         <Text className="text-xs text-muted">

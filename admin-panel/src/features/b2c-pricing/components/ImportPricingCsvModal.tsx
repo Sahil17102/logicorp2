@@ -359,7 +359,7 @@ export default function ImportPricingCsvModal({ open, onClose }: Props) {
       open={open}
       onCancel={handleClose}
       width={860}
-      destroyOnClose
+      destroyOnHidden
       footer={
         step === "upload"
           ? null

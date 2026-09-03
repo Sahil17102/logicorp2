@@ -241,7 +241,7 @@ export default function ImportPincodesCsvModal({ open, onClose, couriers, zones 
       open={open}
       onCancel={handleClose}
       width={720}
-      destroyOnClose
+      destroyOnHidden
       footer={
         step === "upload"
           ? null

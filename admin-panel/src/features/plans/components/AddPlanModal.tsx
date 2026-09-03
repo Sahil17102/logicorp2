@@ -120,7 +120,7 @@ export default function AddPlanModal({ open, onClose, editingPlan }: Props) {
       confirmLoading={isPending}
       okText={editingPlan ? "Save Changes" : "Create Plan"}
       width={480}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="space-y-4 pt-2">
         <div>

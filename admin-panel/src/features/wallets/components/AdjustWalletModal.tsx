@@ -65,7 +65,7 @@ export default function AdjustWalletModal({
       open={open}
       onCancel={onClose}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       width={440}
     >
       <div className="space-y-4">

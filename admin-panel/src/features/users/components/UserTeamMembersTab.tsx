@@ -180,7 +180,7 @@ export function UserTeamMembersTab({ userId, ownerName }: UserTeamMembersTabProp
         onOk={() => form.submit()}
         okText="Add member"
         confirmLoading={createMutation.isPending}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form
           form={form}

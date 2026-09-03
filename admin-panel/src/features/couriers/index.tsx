@@ -290,7 +290,7 @@ export default function CouriersPage() {
         onCancel={() => setRenameTarget(null)}
         confirmLoading={updateCourier.isPending}
         okText="Save"
-        destroyOnClose
+        destroyOnHidden
       >
         <p className="text-xs text-muted mb-2">
           This is the seller-facing name shown across the seller panel.

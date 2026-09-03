@@ -62,7 +62,7 @@ export default function AddZoneModal({ open, onClose, editingZone }: Props) {
       confirmLoading={createZone.isPending || updateZone.isPending}
       okText={isEditing ? "Save Changes" : "Add Zone"}
       width={480}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical" className="pt-2">
         <Form.Item

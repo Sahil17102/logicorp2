@@ -66,7 +66,7 @@ export default function AddLocationModal({ open, onClose }: Props) {
       confirmLoading={createLocation.isPending}
       okText="Add Location"
       width={480}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form
         form={form}

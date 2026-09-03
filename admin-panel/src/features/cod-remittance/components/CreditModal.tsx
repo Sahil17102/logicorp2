@@ -45,7 +45,7 @@ export default function CreditModal({ open, onClose, remittance }: Props) {
       onOk={handleSubmit}
       confirmLoading={creditMutation.isPending}
       okText="Credit Wallet"
-      destroyOnClose
+      destroyOnHidden
     >
       {remittance && (
         <div className="mb-4 p-3 rounded-lg bg-background-elevated border border-border-light text-sm space-y-1">

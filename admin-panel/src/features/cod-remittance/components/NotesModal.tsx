@@ -36,7 +36,7 @@ export default function NotesModal({ open, onClose, remittance }: Props) {
       onOk={handleSubmit}
       confirmLoading={updateNotes.isPending}
       okText="Save Notes"
-      destroyOnClose
+      destroyOnHidden
     >
       <Form
         form={form}

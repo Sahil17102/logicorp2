@@ -573,7 +573,7 @@ export default function AddPricingModal({ open, onClose, editingItem }: Props) {
       okText={editingItem ? "Save Changes" : "Add Pricing"}
       width="98vw"
       style={{ maxWidth: 1280 }}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="space-y-5 pt-2">
         {/* Courier + basic details */}

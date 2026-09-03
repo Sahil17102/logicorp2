@@ -40,7 +40,7 @@ export function DocumentPreviewModal({
       }
       width={fullscreen ? "95vw" : 720}
       centered
-      destroyOnClose
+      destroyOnHidden
       footer={
         <a href={url} download>
           <Button icon={<Download size={14} />}>Download</Button>

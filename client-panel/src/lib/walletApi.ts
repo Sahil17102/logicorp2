@@ -2,6 +2,7 @@ import { api } from "./api";
 import { shouldUseStaticClientData } from "./staticMode";
 
 const STATIC_WALLET_TRANSACTIONS_KEY = "logicorp-static-wallet-transactions";
+const STATIC_WALLET_ID = "wallet-demo-client-user";
 
 export interface WalletBalance {
   balance: number;
@@ -69,7 +70,7 @@ function writeStaticTransactions(transactions: WalletTransaction[]): void {
 }
 
 function getStaticBalance(transactions = readStaticTransactions()): number {
-  return transactions.reduce((sum, transaction) => {
+  return transactions.filter((transaction) => transaction.walletId === STATIC_WALLET_ID).reduce((sum, transaction) => {
     return transaction.type === "credit"
       ? sum + transaction.amount
       : sum - transaction.amount;
@@ -213,7 +214,7 @@ export const walletApi = {
     const transactions = readStaticTransactions();
     const transaction: WalletTransaction = {
       id: `txn-${Date.now()}`,
-      walletId: "static-wallet",
+      walletId: STATIC_WALLET_ID,
       amount: roundedAmount,
       currency: "INR",
       type: "credit",

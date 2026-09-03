@@ -57,7 +57,7 @@ export default function GenerateInvoiceModal({ open, onClose }: Props) {
       onOk={handleSubmit}
       confirmLoading={generate.isPending}
       okText="Generate"
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical" initialValues={{ taxRate: 0 }}>
         <Form.Item

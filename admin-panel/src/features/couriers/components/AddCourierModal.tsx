@@ -46,7 +46,7 @@ export default function AddCourierModal({ open, onClose }: Props) {
       confirmLoading={createCourier.isPending}
       okText="Add Courier"
       width={480}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form
         form={form}

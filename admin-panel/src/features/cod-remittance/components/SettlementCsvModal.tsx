@@ -184,7 +184,7 @@ export default function SettlementCsvModal({ open, onClose }: Props) {
               </Button>,
             ]
       }
-      destroyOnClose
+      destroyOnHidden
     >
       <Steps
         current={step}
