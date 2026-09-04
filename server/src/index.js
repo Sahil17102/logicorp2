@@ -633,8 +633,17 @@ function rtoAddressForRegistration(address) {
 async function resolveProviderAddressIds(pickupAddressId, orderType = "B2C") {
   const credentialType = providerCredentialType(orderType);
   if (/^\d+$/.test(String(pickupAddressId))) {
+    const storedAddress = ensurePickupSeed(readData()).pickupAddresses.find((item) =>
+      String(item.id) === String(pickupAddressId) ||
+      String(item.providerPickupAddressId || "") === String(pickupAddressId)
+    );
     const providerAddressId = String(pickupAddressId);
-    return { pickupAddressId: providerAddressId, rtoAddressId: providerAddressId, pickupCity: "" };
+    return {
+      pickupAddressId: providerAddressId,
+      rtoAddressId: providerAddressId,
+      pickupCity: storedAddress?.city || "",
+      pickupPincode: storedAddress?.pincode || "",
+    };
   }
 
   const data = ensurePickupSeed(readData());
@@ -669,6 +678,7 @@ async function resolveProviderAddressIds(pickupAddressId, orderType = "B2C") {
     pickupAddressId: String(address.providerPickupAddressId),
     rtoAddressId: String(address.providerRtoAddressId),
     pickupCity: String(address.city || ""),
+    pickupPincode: String(address.pincode || ""),
   };
 }
 
@@ -716,6 +726,11 @@ function providerCreatePayload(order, providerAddressIds, deliveryPartnerId = or
   const productQuantities = products.map((product) => product.quantity);
   const productTaxes = products.map((product) => product.tax_rate);
   const productTotals = products.map((product) => product.total);
+  const selectedRate = order.rate || {};
+  const freightCharge = round(toNumber(selectedRate.freightCharge ?? selectedRate.forward), 2);
+  const totalCharge = round(toNumber(selectedRate.totalCharge), 2);
+  const otherCharges = round(toNumber(selectedRate.otherCharges), 2);
+  const selectedCodCharges = round(toNumber(selectedRate.codCharges, codAmount > 0 ? Math.max(35, orderValue * 0.02) : 0), 2);
 
   return {
     buyer_pincode: order.pincode,
@@ -746,13 +761,21 @@ function providerCreatePayload(order, providerAddressIds, deliveryPartnerId = or
     total: productTotals,
     payment_method: order.paymentType === "cod" ? "COD" : "PREPAID",
     cod_amount: String(codAmount),
+    cod_charges: String(selectedCodCharges),
     no_of_box: String(packages.length),
     total_weight: String(totalWeight),
     total_volumetric_weight: String(totalVolumetricWeight),
     chargeable_weight: String(chargeableWeight),
     packages,
-    pickup_code: "",
+    pickup_code: providerAddressIds.pickupPincode || order.origin || "",
     delivery_code: order.pincode,
+    freight: String(freightCharge),
+    freight_charge: String(freightCharge),
+    total_freight: String(freightCharge),
+    gst: String(otherCharges),
+    shipping_amount: String(totalCharge),
+    shipping_charge: String(totalCharge),
+    total_charges: String(totalCharge),
     pickup_address_city_name: providerAddressIds.pickupCity || order.city || "",
     pickup_address_id: numericPickupAddressId,
     rto_address_id: numericRtoAddressId,

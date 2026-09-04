@@ -242,13 +242,16 @@ function toPickupRegistrationPayload(address: StoredProviderPickupAddress): Cour
 
 async function resolveProviderPickupAddress(
   pickupAddressId: string,
-): Promise<{ id: string; city: string }> {
-  if (isProviderId(pickupAddressId)) return { id: pickupAddressId, city: "" };
+): Promise<{ id: string; city: string; pincode: string }> {
+  if (isProviderId(pickupAddressId)) {
+    const stored = findStoredPickupAddress(pickupAddressId);
+    return { id: pickupAddressId, city: String(stored?.city || ""), pincode: String(stored?.pincode || "") };
+  }
 
   const address = findStoredPickupAddress(pickupAddressId);
-  if (!address) return { id: pickupAddressId, city: "" };
+  if (!address) return { id: pickupAddressId, city: "", pincode: "" };
   if (address.providerPickupAddressId && isProviderId(address.providerPickupAddressId)) {
-    return { id: address.providerPickupAddressId, city: String(address.city || "") };
+    return { id: address.providerPickupAddressId, city: String(address.city || ""), pincode: String(address.pincode || "") };
   }
 
   const result = await courierApi.registerPickupAddress(toPickupRegistrationPayload(address));
@@ -263,7 +266,7 @@ async function resolveProviderPickupAddress(
       item.id === address.id ? { ...item, providerPickupAddressId } : item,
     ),
   );
-  return { id: providerPickupAddressId, city: String(address.city || "") };
+  return { id: providerPickupAddressId, city: String(address.city || ""), pincode: String(address.pincode || "") };
 }
 
 function getProviderOrderId(result: {
@@ -285,7 +288,7 @@ function getProviderAwb(result: {
 
 function toProviderCreateOrderPayload(
   data: CreateOrderPayload,
-  providerPickupAddress: { id: string; city: string },
+  providerPickupAddress: { id: string; city: string; pincode: string },
 ): CourierCreateOrderPayload {
   const providerPickupAddressId = providerPickupAddress.id;
   const isB2B = data.orderType === "B2B";
@@ -313,6 +316,11 @@ function toProviderCreateOrderPayload(
   const totalWeight = round(packages.reduce((sum, pkg) => sum + toNumber(pkg.total_weight ?? pkg.weight), 0));
   const totalVolumetricWeight = round(packages.reduce((sum, pkg) => sum + toNumber(pkg.volumetric_weight), 0));
   const chargeableWeight = Math.max(totalWeight, totalVolumetricWeight, isB2B ? 1 : 0.5);
+  const selectedRate = data.rate || {};
+  const freightCharge = round(toNumber(selectedRate.freightCharge ?? selectedRate.forward), 2);
+  const totalCharge = round(toNumber(selectedRate.totalCharge), 2);
+  const otherCharges = round(toNumber(selectedRate.otherCharges), 2);
+  const selectedCodCharges = round(toNumber(selectedRate.codCharges, data.paymentType === "cod" ? Math.max(35, data.orderAmount * 0.02) : 0), 2);
   const firstInvoice = data.invoices?.[0];
   const products = data.products.map((product) => {
     const total = product.unitPrice * product.quantity;
@@ -355,13 +363,21 @@ function toProviderCreateOrderPayload(
     total: products.map((product) => product.total),
     payment_method: data.paymentType === "cod" ? "COD" : "PREPAID",
     cod_amount: data.paymentType === "cod" ? String(round(data.codAmount, 2)) : null,
+    cod_charges: String(selectedCodCharges),
     no_of_box: String(packages.length),
     total_weight: String(totalWeight),
     total_volumetric_weight: String(totalVolumetricWeight),
     chargeable_weight: String(chargeableWeight),
     packages,
-    pickup_code: "",
+    pickup_code: providerPickupAddress.pincode,
     delivery_code: data.pincode,
+    freight: String(freightCharge),
+    freight_charge: String(freightCharge),
+    total_freight: String(freightCharge),
+    gst: String(otherCharges),
+    shipping_amount: String(totalCharge),
+    shipping_charge: String(totalCharge),
+    total_charges: String(totalCharge),
     pickup_address_city_name: providerPickupAddress.city || data.city,
     pickup_address_id: providerPickupAddressId,
     rto_address_id: providerPickupAddressId,

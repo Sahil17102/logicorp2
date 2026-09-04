@@ -307,6 +307,7 @@ export interface CourierCreateOrderPayload {
   total?: string[];
   payment_method: "PREPAID" | "COD" | string;
   cod_amount: string | null;
+  cod_charges?: string;
   no_of_box: string;
   total_weight: string;
   total_volumetric_weight: string;
@@ -314,6 +315,13 @@ export interface CourierCreateOrderPayload {
   packages: CourierPackagePayload[];
   pickup_code?: string;
   delivery_code?: string;
+  freight?: string;
+  freight_charge?: string;
+  total_freight?: string;
+  gst?: string;
+  shipping_amount?: string;
+  shipping_charge?: string;
+  total_charges?: string;
   pickup_address_city_name: string;
   pickup_address_id: string;
   rto_address_id?: string;
