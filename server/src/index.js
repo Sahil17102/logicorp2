@@ -1795,6 +1795,29 @@ function b2cRatesFromAdminPricing(params) {
   });
 }
 
+function overlayAdminPricesOnProviderRates(providerRates, adminRates) {
+  const adminByCourierId = new Map((adminRates || []).map((rate) => [String(rate.courierId), rate]));
+  return (providerRates || []).map((providerRate, index) => {
+    const adminRate = adminByCourierId.get(String(providerRate.courierId));
+    if (!adminRate) return { ...providerRate, tag: index === 0 ? "economy" : providerRate.tag };
+    return {
+      ...providerRate,
+      mode: adminRate.mode || providerRate.mode,
+      zone: adminRate.zone || providerRate.zone,
+      minWeight: adminRate.minWeight ?? providerRate.minWeight,
+      rate: adminRate.rate,
+      tag: index === 0 ? "economy" : adminRate.tag,
+    };
+  });
+}
+
+function bookableB2cRates(providerRates, adminRates, params) {
+  if (Array.isArray(providerRates) && providerRates.length > 0) {
+    return overlayAdminPricesOnProviderRates(providerRates, adminRates);
+  }
+  return adminRates.length ? adminRates : fallbackB2cRates(params);
+}
+
 function listB2cZonesResponse(query = {}) {
   const data = ensureB2cPricingSeed(readData());
   const search = String(query.search || "").trim().toLowerCase();
@@ -2232,12 +2255,11 @@ app.post("/api/pickup-addresses", async (req, res, next) => {
 });
 
 app.post("/api/rates/available", async (req, res) => {
+  const adminRates = b2cRatesFromAdminPricing(req.body);
   try {
-    const adminRates = b2cRatesFromAdminPricing(req.body);
-    const data = await shippingRates(req.body, "B2C");
-    res.json({ success: true, data: mergeCourierOptions(adminRates.length ? adminRates : fallbackB2cRates(req.body), data) });
+    const providerRates = await shippingRates(req.body, "B2C");
+    res.json({ success: true, data: bookableB2cRates(providerRates, adminRates, req.body) });
   } catch {
-    const adminRates = b2cRatesFromAdminPricing(req.body);
     res.json({ success: true, data: adminRates.length ? adminRates : fallbackB2cRates(req.body) });
   }
 });
