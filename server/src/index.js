@@ -725,6 +725,7 @@ function providerCreatePayload(order, providerAddressIds, deliveryPartnerId = or
     reseller_name: "",
     eway_bill_no: order.invoices?.[0]?.ebn || "",
     dimension_unit: "cm",
+    rov: order.isInsurance ? "Carrier Risk" : "Owner Risk",
     total_order_value: String(orderValue),
     payment_amount: String(orderValue),
     order_amount: String(orderValue),
