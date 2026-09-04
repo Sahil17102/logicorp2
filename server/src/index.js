@@ -86,11 +86,36 @@ function b2cChargeableKg(weight, length, breadth, height) {
   return Math.max(kgFromGrams(weight), volumetricKg(length, breadth, height), 0.5);
 }
 
+function messageFromProviderData(data) {
+  if (!data) return "";
+  if (typeof data === "string") {
+    const trimmed = data.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    return trimmed.slice(0, 300);
+  }
+  if (Array.isArray(data.errors)) {
+    return data.errors
+      .map((item) => item?.msg || item?.message || item?.error || String(item || ""))
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (data.errors && typeof data.errors === "object") {
+    return Object.entries(data.errors)
+      .flatMap(([field, value]) => {
+        const messages = Array.isArray(value) ? value : [value];
+        return messages.map((message) => `${field}: ${message}`);
+      })
+      .join(", ");
+  }
+  return data.msg || data.message || data.error || "";
+}
+
 function providerError(err) {
   const data = err?.response?.data;
-  const message = data?.msg || data?.message || data?.error || err?.message || "Courier provider request failed";
+  const providerMessage = messageFromProviderData(data);
+  const message = providerMessage || err?.message || "Courier provider request failed";
   const error = new Error(message);
   error.status = err?.response?.status || 500;
+  error.providerData = data;
   return error;
 }
 
@@ -188,8 +213,8 @@ async function refreshProviderJwt(type = "b2c") {
   return { token: login.token, baseUrl: login.baseUrl };
 }
 
-async function providerRequest(method, url, data) {
-  const { token, baseUrl } = await providerAuth();
+async function providerRequest(method, url, data, type = "b2c") {
+  const { token, baseUrl } = await providerAuth(type);
   try {
     const res = await providerHttp(baseUrl).request({
       method,
@@ -202,7 +227,7 @@ async function providerRequest(method, url, data) {
     if (err?.response?.status === 401 && !TEAMPAFEX_API_TOKEN) {
       cachedToken = null;
       cachedTokenKey = null;
-      const refreshed = await refreshProviderJwt();
+      const refreshed = await refreshProviderJwt(type);
       try {
         const retry = await providerHttp(refreshed.baseUrl).request({
           method,
@@ -220,11 +245,15 @@ async function providerRequest(method, url, data) {
 }
 
 async function providerCourierPartners(orderType = "B2C") {
-  const result = await providerRequest("get", "/api/courier_ids");
+  const result = await providerRequest("get", "/api/courier_ids", undefined, providerCredentialType(orderType));
   const partners = result.delivery_patners || result.delivery_partners || [];
   return partners.filter((partner) => (
     !partner.type || String(partner.type).toUpperCase() === String(orderType || "B2C").toUpperCase()
   ));
+}
+
+function providerCredentialType(orderType = "B2C") {
+  return String(orderType).toUpperCase() === "B2B" ? "b2b" : "b2c";
 }
 
 function normalizeCourierName(value) {
@@ -568,7 +597,8 @@ function rtoAddressForRegistration(address) {
   };
 }
 
-async function resolveProviderAddressIds(pickupAddressId) {
+async function resolveProviderAddressIds(pickupAddressId, orderType = "B2C") {
+  const credentialType = providerCredentialType(orderType);
   if (/^\d+$/.test(String(pickupAddressId))) {
     const providerAddressId = String(pickupAddressId);
     return { pickupAddressId: providerAddressId, rtoAddressId: providerAddressId, pickupCity: "" };
@@ -579,7 +609,7 @@ async function resolveProviderAddressIds(pickupAddressId) {
   if (!address) throw Object.assign(new Error("Pickup address not found"), { status: 400 });
 
   if (!address.providerPickupAddressId) {
-    const result = await providerRequest("post", "/api/register_pickup_address", pickupRegistrationPayload(address));
+    const result = await providerRequest("post", "/api/register_pickup_address", pickupRegistrationPayload(address), credentialType);
     if (!result.status || !result.pickup_address_id) throw Object.assign(new Error(result.msg || "Pickup registration failed"), { status: 400 });
     address.providerPickupAddressId = String(result.pickup_address_id);
     address.updatedAt = nowIso();
@@ -595,7 +625,7 @@ async function resolveProviderAddressIds(pickupAddressId) {
   }
 
   if (!address.providerRtoAddressId) {
-    const result = await providerRequest("post", "/api/register_pickup_address", pickupRegistrationPayload(rtoAddressForRegistration(address)));
+    const result = await providerRequest("post", "/api/register_pickup_address", pickupRegistrationPayload(rtoAddressForRegistration(address)), credentialType);
     if (!result.status || !result.pickup_address_id) throw Object.assign(new Error(result.msg || "RTO address registration failed"), { status: 400 });
     address.providerRtoAddressId = String(result.pickup_address_id);
     address.updatedAt = nowIso();
@@ -675,6 +705,43 @@ function providerCreatePayload(order, providerAddressIds, deliveryPartnerId = or
   };
 }
 
+function providerOrderId(result = {}) {
+  return String(result.order_id ?? result.data?.order_id ?? result.id ?? result.data?.id ?? "");
+}
+
+function providerAwb(result = {}) {
+  return String(
+    result.awb_no ??
+    result.data?.awb_no ??
+    result.awb ??
+    result.data?.awb ??
+    result.awb_number ??
+    result.data?.awb_number ??
+    "",
+  );
+}
+
+function providerSucceeded(result = {}) {
+  return result.status === true || result.success === true || result.status === 1 || result.success === 1 || result.status === "true" || result.success === "true";
+}
+
+function providerOrdersList(result = {}) {
+  return result.orders || result.data?.orders || result.data || [];
+}
+
+function providerInvoiceNumber(order = {}) {
+  return String(order.invoice_number || order.invoiceNumber || order.order_id || order.orderId || order.id || "");
+}
+
+async function findProviderOrderByInvoice(invoiceNumber, orderType = "B2C") {
+  if (!invoiceNumber) return null;
+  const credentialType = providerCredentialType(orderType);
+  const result = await providerRequest("get", "/api/orders", undefined, credentialType);
+  const orders = providerOrdersList(result);
+  if (!Array.isArray(orders)) return null;
+  return orders.find((item) => providerInvoiceNumber(item) === String(invoiceNumber)) || null;
+}
+
 function courierName(courierId) {
   const id = String(courierId).split(":").pop();
   if (id === "80") return "DLVY Standard";
@@ -685,10 +752,10 @@ function courierName(courierId) {
 
 function orderFromPayload(payload, providerResult, providerPickupAddressId) {
   const now = nowIso();
-  const providerOrderId = String(providerResult.order_id ?? providerResult.data?.order_id ?? providerResult.id ?? providerResult.data?.id ?? `provider-${Date.now()}`);
-  const awb = String(providerResult.awb_no ?? providerResult.data?.awb_no ?? providerResult.awb ?? providerResult.data?.awb ?? providerResult.awb_number ?? providerResult.data?.awb_number ?? "");
+  const idFromProvider = providerOrderId(providerResult) || `provider-${Date.now()}`;
+  const awb = providerAwb(providerResult);
   return {
-    id: providerOrderId,
+    id: idFromProvider,
     userId: "demo-client-user",
     orderId: payload.orderId,
     orderType: payload.orderType,
@@ -698,7 +765,7 @@ function orderFromPayload(payload, providerResult, providerPickupAddressId) {
     serviceProvider: "teampafex",
     courierName: courierName(payload.courierId),
     awb,
-    providerOrderId,
+    providerOrderId: idFromProvider,
     pickupAddressId: providerPickupAddressId,
     deliveryAddress: {
       contactName: payload.buyerName,
@@ -991,7 +1058,7 @@ async function shippingRates(params, orderType) {
     dimension_unit: "cm",
     packages,
     calculator_type: orderType,
-  });
+  }, providerCredentialType(orderType));
   const partners = await providerCourierPartners(orderType).catch(() => []);
   return (response.shipping_data || []).map((rate, index) => mapProviderRate(rate, index, { ...params, weight: chargeable * 1000 }, orderType, partners));
 }
@@ -1000,6 +1067,37 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.get("/api/health/config", (_req, res) => {
   res.json({ ok: true, config: providerConfigStatus() });
+});
+
+app.get("/api/health/provider", async (_req, res) => {
+  try {
+    const stats = await providerRequest("get", "/api/statistics");
+    res.json({
+      ok: true,
+      provider: "teampafex",
+      status: stats.status ?? true,
+      wallet: stats.user_wallet,
+      counts: {
+        processing: stats.processing,
+        manifested: stats.manifested,
+        inTransit: stats.in_transit,
+        pending: stats.pending,
+        outForDelivery: stats.out_for_delivery,
+        delivered: stats.delivered,
+        completed: stats.completed,
+        cancelled: stats.cancelled,
+        rtoInTransit: stats.rto_in_transit,
+        rtoDelivered: stats.rto_delivered,
+      },
+      message: stats.msg,
+    });
+  } catch (err) {
+    res.status(err.status || 502).json({
+      ok: false,
+      provider: "teampafex",
+      error: err.message || "Courier provider health check failed",
+    });
+  }
 });
 
 app.get("/api/kyc", (_req, res) => {
@@ -1034,7 +1132,7 @@ app.post("/api/pickup-addresses", async (req, res, next) => {
       createdAt: nowIso(),
       updatedAt: nowIso(),
     };
-    const result = await providerRequest("post", "/api/register_pickup_address", pickupRegistrationPayload(address));
+    const result = await providerRequest("post", "/api/register_pickup_address", pickupRegistrationPayload(address), "b2c");
     address.providerPickupAddressId = String(result.pickup_address_id || address.id);
     data.pickupAddresses = [address, ...data.pickupAddresses];
     writeData(data);
@@ -1089,11 +1187,23 @@ app.post("/api/rates/b2b/available", async (req, res) => {
 
 app.post("/api/orders", async (req, res, next) => {
   try {
-    const providerAddressIds = await resolveProviderAddressIds(req.body.pickupAddressId);
+    const credentialType = providerCredentialType(req.body.orderType);
+    const providerAddressIds = await resolveProviderAddressIds(req.body.pickupAddressId, req.body.orderType);
     const deliveryPartnerId = await resolveDeliveryPartnerId(req.body.courierId, req.body.courierName, req.body.orderType);
     const providerPayload = providerCreatePayload(req.body, providerAddressIds, deliveryPartnerId);
-    const providerResult = await providerRequest("post", "/api/create_order", providerPayload);
-    if (!providerResult.status) throw Object.assign(new Error(providerResult.msg || "Teampafex order creation failed"), { status: 400 });
+    const providerResult = await providerRequest("post", "/api/create_order", providerPayload, credentialType);
+    if (!providerSucceeded(providerResult)) {
+      const reconciled = await findProviderOrderByInvoice(providerPayload.invoice_number, req.body.orderType).catch(() => null);
+      if (!reconciled) {
+        const message = messageFromProviderData(providerResult) || "Teampafex order creation failed";
+        throw Object.assign(new Error(message), { status: 400, providerData: providerResult });
+      }
+      const order = orderFromPayload(req.body, reconciled, providerAddressIds.pickupAddressId);
+      const data = readData();
+      data.orders = [order, ...data.orders.filter((item) => item.id !== order.id)];
+      writeData(data);
+      return res.json({ order, warning: "Teampafex returned a failed response, but the order was found and saved locally." });
+    }
     const order = orderFromPayload(req.body, providerResult, providerAddressIds.pickupAddressId);
     const data = readData();
     data.orders = [order, ...data.orders.filter((item) => item.id !== order.id)];
