@@ -664,6 +664,10 @@ function providerCreatePayload(order, providerAddressIds, deliveryPartnerId = or
     : [packagePayload({ weightKg: b2cChargeableKg(order.weight, order.length, order.breadth, order.height), length: order.length, breadth: order.breadth, height: order.height })];
   const totalWeight = round(packages.reduce((sum, pkg) => sum + toNumber(pkg.total_weight ?? pkg.weight), 0), 3);
   const totalVolumetricWeight = round(packages.reduce((sum, pkg) => sum + toNumber(pkg.volumetric_weight), 0), 3);
+  const orderValue = round(order.orderAmount, 2);
+  const codAmount = order.paymentType === "cod" ? round(order.codAmount, 2) : 0;
+  const numericPickupAddressId = /^\d+$/.test(String(providerPickupAddressId)) ? Number(providerPickupAddressId) : providerPickupAddressId;
+  const numericRtoAddressId = /^\d+$/.test(String(providerRtoAddressId)) ? Number(providerRtoAddressId) : providerRtoAddressId;
   const products = (order.products || []).map((product) => ({
     product_name: product.name,
     sku: product.hsn || String(product.name || order.orderId).replace(/\s+/g, "-").toUpperCase().slice(0, 32),
@@ -672,6 +676,12 @@ function providerCreatePayload(order, providerAddressIds, deliveryPartnerId = or
     tax_rate: String(product.taxRate || 0),
     total: String(round(toNumber(product.unitPrice) * toNumber(product.quantity || 1), 2)),
   }));
+  const productNames = products.map((product) => product.product_name);
+  const productSkus = products.map((product) => product.sku);
+  const productRates = products.map((product) => product.rate);
+  const productQuantities = products.map((product) => product.quantity);
+  const productTaxes = products.map((product) => product.tax_rate);
+  const productTotals = products.map((product) => product.total);
 
   return {
     buyer_pincode: order.pincode,
@@ -679,7 +689,7 @@ function providerCreatePayload(order, providerAddressIds, deliveryPartnerId = or
     buyer_state: order.state,
     buyer_name: order.buyerName,
     buyer_mobile: order.buyerPhone,
-    alternate_buyer_mobile: null,
+    alternate_buyer_mobile: "",
     buyer_email: order.buyerEmail || defaultSeller().email,
     buyer_address1: order.address,
     buyer_address2: order.address2 || "",
@@ -688,17 +698,26 @@ function providerCreatePayload(order, providerAddressIds, deliveryPartnerId = or
     reseller_name: "",
     eway_bill_no: order.invoices?.[0]?.ebn || "",
     dimension_unit: "cm",
-    total_order_value: String(round(order.orderAmount, 2)),
+    total_order_value: String(orderValue),
+    payment_amount: String(orderValue),
+    order_amount: String(orderValue),
     products,
+    product_name: productNames,
+    product_sku: productSkus,
+    sku: productSkus,
+    rate: productRates,
+    quantity: productQuantities,
+    tax_rate: productTaxes,
+    total: productTotals,
     payment_method: order.paymentType === "cod" ? "COD" : "PREPAID",
-    cod_amount: order.paymentType === "cod" ? String(round(order.codAmount, 2)) : null,
+    cod_amount: String(codAmount),
     no_of_box: String(packages.length),
     total_weight: String(totalWeight),
     total_volumetric_weight: String(totalVolumetricWeight),
     packages,
     pickup_address_city_name: providerAddressIds.pickupCity || order.city || "",
-    pickup_address_id: providerPickupAddressId,
-    rto_address_id: providerRtoAddressId,
+    pickup_address_id: numericPickupAddressId,
+    rto_address_id: numericRtoAddressId,
     submit_value: "Save Order",
     order_type: order.orderType,
     delivery_partner_id: /^\d+$/.test(String(deliveryPartnerId)) ? Number(deliveryPartnerId) : deliveryPartnerId,
