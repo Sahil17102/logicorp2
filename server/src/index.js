@@ -783,6 +783,27 @@ function isGenericOrderCreateFailure(result = {}) {
   return !providerSucceeded(result) && (!message || message === "order create failed" || message.includes("order create failed"));
 }
 
+function looksLikeProviderOrder(item) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+  return Boolean(
+    item.id ||
+    item.order_id ||
+    item.invoice_number ||
+    item.awb_no ||
+    item.buyer_name ||
+    item.buyer_mobile ||
+    item.order_status ||
+    item.status,
+  );
+}
+
+function providerOrderArrays(value, seen = new Set()) {
+  if (!value || typeof value !== "object" || seen.has(value)) return [];
+  seen.add(value);
+  if (Array.isArray(value)) return value.some(looksLikeProviderOrder) ? [value] : [];
+  return Object.values(value).flatMap((child) => providerOrderArrays(child, seen));
+}
+
 function providerOrdersList(result = {}) {
   const candidates = [
     result.orders?.data,
@@ -792,7 +813,10 @@ function providerOrdersList(result = {}) {
     result.data?.orders,
     result.data,
   ];
-  return candidates.find((candidate) => Array.isArray(candidate)) || [];
+  const direct = candidates.find((candidate) => Array.isArray(candidate) && candidate.some(looksLikeProviderOrder));
+  if (direct) return direct;
+  const nested = providerOrderArrays(result).sort((a, b) => b.length - a.length);
+  return nested[0] || [];
 }
 
 function appendFormValue(form, key, value) {
@@ -1771,6 +1795,27 @@ app.get("/api/health/provider", async (_req, res) => {
       ok: false,
       provider: "teampafex",
       error: err.message || "Courier provider health check failed",
+    });
+  }
+});
+
+app.get("/api/health/provider/orders", async (_req, res) => {
+  try {
+    const raw = await providerRequest("get", "/api/orders");
+    const arrays = providerOrderArrays(raw).sort((a, b) => b.length - a.length);
+    const orders = providerOrdersList(raw);
+    res.json({
+      ok: true,
+      topLevelKeys: raw && typeof raw === "object" && !Array.isArray(raw) ? Object.keys(raw) : [],
+      arrayLengths: arrays.map((items) => items.length).slice(0, 5),
+      parsedCount: orders.length,
+      firstOrder: orders[0] ? redactedProviderDebug(orders[0]) : null,
+      message: messageFromProviderData(raw),
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({
+      ok: false,
+      error: err.message || "Courier provider orders check failed",
     });
   }
 });
