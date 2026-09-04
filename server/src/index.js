@@ -1455,6 +1455,47 @@ function buildHomeDashboard(orders) {
   };
 }
 
+async function adminCouriersResponse(query = {}) {
+  const result = await providerRequest("get", "/api/courier_ids", undefined, "b2c");
+  const partners = result.delivery_patners || result.delivery_partners || [];
+  let couriers = partners.map((partner) => {
+    const businessType = providerCredentialType(partner.type || "B2C");
+    return {
+      id: `teampafex:${partner.id}`,
+      name: partner.name,
+      serviceProvider: "teampafex",
+      serviceProviderDisplayName: "Teampafex",
+      courierType: "delivery",
+      businessType: [businessType],
+      isEnabled: true,
+      logo: null,
+      createdAt: "",
+      updatedAt: "",
+    };
+  });
+  if (query.businessType) {
+    const type = String(query.businessType).toLowerCase();
+    couriers = couriers.filter((courier) => courier.businessType.includes(type));
+  }
+  if (query.serviceProvider) {
+    couriers = couriers.filter((courier) => courier.serviceProvider === query.serviceProvider);
+  }
+  if (query.isEnabled === "false") couriers = [];
+  const page = Math.max(1, Number(query.page || 1));
+  const limit = Math.max(1, Number(query.limit || 50));
+  const start = (page - 1) * limit;
+  return {
+    couriers: couriers.slice(start, start + limit),
+    pagination: { page, limit, total: couriers.length, totalPages: Math.max(1, Math.ceil(couriers.length / limit)) },
+    stats: {
+      total: couriers.length,
+      enabled: couriers.length,
+      disabled: 0,
+      delivery: couriers.length,
+    },
+  };
+}
+
 async function cancelProviderOrder(order, reason = "") {
   if (!order.providerOrderId && !order.id) return null;
   const body = new URLSearchParams({
@@ -2042,6 +2083,23 @@ app.post("/api/admin/kyc/:id/document/:key/approve", (_req, res) => {
 
 app.get("/api/admin/users/:userId/pickup-addresses", (_req, res) => {
   res.json({ addresses: ensurePickupSeed(readData()).pickupAddresses });
+});
+
+app.get("/api/admin/couriers", async (req, res) => {
+  try {
+    res.json(await adminCouriersResponse(req.query));
+  } catch {
+    const couriers = [
+      { id: "teampafex:80", name: "DLVY Standard", serviceProvider: "teampafex", serviceProviderDisplayName: "Teampafex", courierType: "delivery", businessType: ["b2c"], isEnabled: true, logo: null, createdAt: "", updatedAt: "" },
+      { id: "teampafex:152", name: "Delhivery B2B", serviceProvider: "teampafex", serviceProviderDisplayName: "Teampafex", courierType: "delivery", businessType: ["b2b"], isEnabled: true, logo: null, createdAt: "", updatedAt: "" },
+      { id: "teampafex:161", name: "Shadowfax", serviceProvider: "teampafex", serviceProviderDisplayName: "Teampafex", courierType: "delivery", businessType: ["b2c"], isEnabled: true, logo: null, createdAt: "", updatedAt: "" },
+    ];
+    res.json({
+      couriers,
+      pagination: { page: 1, limit: Number(req.query.limit || 50), total: couriers.length, totalPages: 1 },
+      stats: { total: couriers.length, enabled: couriers.length, disabled: 0, delivery: couriers.length },
+    });
+  }
 });
 
 app.get("/api/admin/service-providers", (_req, res) => {
