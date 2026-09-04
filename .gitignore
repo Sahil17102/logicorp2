@@ -6,4 +6,5 @@ dist/
 *.sentry-build-plugin
 *.tsbuildinfo
 .tmp_*/
+.tmp-data/
 server/data/

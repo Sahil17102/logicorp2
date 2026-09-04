@@ -15,6 +15,7 @@ const TEAMPAFEX_EMAIL = process.env.TEAMPAFEX_EMAIL || "";
 const TEAMPAFEX_PASSWORD = process.env.TEAMPAFEX_PASSWORD || "";
 const TEAMPAFEX_API_TOKEN = process.env.TEAMPAFEX_API_TOKEN || "";
 const TEAMPAFEX_PROVIDER_ID = "sp-teampafex";
+const SEED_CREATED_AT = "2026-09-03T00:00:00.000Z";
 
 let cachedToken = TEAMPAFEX_API_TOKEN || null;
 let cachedTokenKey = TEAMPAFEX_API_TOKEN ? "env-token" : null;
@@ -85,6 +86,22 @@ function volumetricKg(length = 0, breadth = 0, height = 0) {
 function b2cChargeableKg(weight, length, breadth, height) {
   return Math.max(kgFromGrams(weight), volumetricKg(length, breadth, height), 0.5);
 }
+
+const DEFAULT_B2C_ZONES = [
+  { id: "seed-b2c-zone-a", code: "A", name: "Local", description: "Pickup and delivery within the same city", isActive: true, createdAt: SEED_CREATED_AT, updatedAt: SEED_CREATED_AT },
+  { id: "seed-b2c-zone-b", code: "B", name: "Regional", description: "Same state or nearby regional lanes", isActive: true, createdAt: SEED_CREATED_AT, updatedAt: SEED_CREATED_AT },
+  { id: "seed-b2c-zone-c", code: "C", name: "Metro", description: "Major metro-to-metro lanes", isActive: true, createdAt: SEED_CREATED_AT, updatedAt: SEED_CREATED_AT },
+  { id: "seed-b2c-zone-d", code: "D", name: "National", description: "Rest of India standard delivery", isActive: true, createdAt: SEED_CREATED_AT, updatedAt: SEED_CREATED_AT },
+  { id: "seed-b2c-zone-e", code: "E", name: "Special", description: "Remote, extended or high-cost lanes", isActive: true, createdAt: SEED_CREATED_AT, updatedAt: SEED_CREATED_AT },
+];
+
+const DEFAULT_B2C_WEIGHT_SLABS = [
+  { minWeight: 0, maxWeight: 500 },
+  { minWeight: 500, maxWeight: 1000 },
+  { minWeight: 1000, maxWeight: 2000 },
+  { minWeight: 2000, maxWeight: 5000 },
+  { minWeight: 5000, maxWeight: null },
+];
 
 function messageFromProviderData(data) {
   if (!data) return "";
@@ -1601,6 +1618,224 @@ async function adminCouriersResponse(query = {}) {
   };
 }
 
+function defaultCourierRef(courierId) {
+  const id = String(courierId || "").split(":").pop();
+  if (id === "80") return { id: "teampafex:80", name: "DLVY Standard", serviceProvider: "teampafex" };
+  if (id === "152") return { id: "teampafex:152", name: "Delhivery B2B", serviceProvider: "teampafex" };
+  if (id === "161") return { id: "teampafex:161", name: "Shadowfax", serviceProvider: "teampafex" };
+  return { id: String(courierId || ""), name: courierName(courierId), serviceProvider: "teampafex" };
+}
+
+function makeSeedB2cPricing(courierId, courierNameValue, mode, zoneRates) {
+  return {
+    id: `seed-b2c-pricing-${courierId.replace(/[^a-z0-9]+/gi, "-")}`,
+    courier: { id: courierId, name: courierNameValue, serviceProvider: "teampafex" },
+    plan: "basic",
+    mode,
+    otherCharges: 0,
+    weightSlabs: DEFAULT_B2C_WEIGHT_SLABS,
+    zoneRates: DEFAULT_B2C_ZONES.map((zone, zoneIndex) => {
+      const base = zoneRates[zoneIndex] || zoneRates[zoneRates.length - 1];
+      return {
+        zone: { id: zone.id, name: zone.name, code: zone.code },
+        slabRates: DEFAULT_B2C_WEIGHT_SLABS.map((_, slabIndex) => ({
+          forward: Math.round(base[0] * (slabIndex + 1)),
+          rto: Math.round(base[1] * (slabIndex + 1)),
+          codCharges: base[2],
+          codPercent: base[3],
+        })),
+      };
+    }),
+    createdAt: SEED_CREATED_AT,
+    updatedAt: SEED_CREATED_AT,
+  };
+}
+
+function defaultB2cPricingRows() {
+  return [
+    makeSeedB2cPricing("teampafex:80", "DLVY Standard", "surface", [
+      [38, 32, 45, 2],
+      [45, 38, 45, 2],
+      [58, 48, 45, 2],
+      [72, 58, 45, 2],
+      [95, 75, 45, 2],
+    ]),
+    makeSeedB2cPricing("teampafex:161", "Shadowfax", "surface", [
+      [34, 28, 40, 2],
+      [42, 34, 40, 2],
+      [54, 44, 40, 2],
+      [70, 56, 40, 2],
+      [98, 78, 40, 2],
+    ]),
+  ];
+}
+
+function ensureB2cPricingSeed(data = readData()) {
+  let changed = false;
+  if (!Array.isArray(data.b2cZones) || data.b2cZones.length === 0) {
+    data.b2cZones = DEFAULT_B2C_ZONES;
+    changed = true;
+  }
+  if (!Array.isArray(data.b2cPricing) || data.b2cPricing.length === 0) {
+    data.b2cPricing = defaultB2cPricingRows();
+    changed = true;
+  }
+  return changed ? writeData(data) : data;
+}
+
+function normalizeCourierId(value) {
+  const raw = String(value || "");
+  const id = raw.split(":").pop();
+  return id ? `teampafex:${id}` : raw;
+}
+
+function providerCourierId(value) {
+  return String(value || "").split(":").pop();
+}
+
+function populatedZoneRate(zoneRate, zones) {
+  const zoneId = typeof zoneRate.zone === "string" ? zoneRate.zone : zoneRate.zone?.id;
+  const zone = zones.find((item) => item.id === zoneId || item.code === zoneId) || zoneRate.zone || zones[0];
+  return {
+    zone: {
+      id: zone.id || zoneId,
+      name: zone.name || zoneId,
+      code: zone.code || zoneId,
+    },
+    slabRates: Array.isArray(zoneRate.slabRates) ? zoneRate.slabRates : [],
+  };
+}
+
+function normalizeB2cPricingPayload(payload, existing) {
+  const data = ensureB2cPricingSeed(readData());
+  const courier = defaultCourierRef(payload.courierId || payload.courier?.id || existing?.courier?.id);
+  const now = nowIso();
+  const id = existing?.id || `b2c-pricing-${providerCourierId(courier.id)}-${String(payload.plan || "basic").toLowerCase()}-${Date.now()}`;
+  return {
+    id,
+    courier,
+    plan: payload.plan || existing?.plan || "basic",
+    mode: payload.mode || existing?.mode || "surface",
+    otherCharges: round(toNumber(payload.otherCharges ?? existing?.otherCharges), 2),
+    weightSlabs: Array.isArray(payload.weightSlabs) && payload.weightSlabs.length
+      ? payload.weightSlabs
+      : existing?.weightSlabs || DEFAULT_B2C_WEIGHT_SLABS,
+    zoneRates: (Array.isArray(payload.zoneRates) ? payload.zoneRates : existing?.zoneRates || [])
+      .map((zoneRate) => populatedZoneRate(zoneRate, data.b2cZones)),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+}
+
+function b2cZoneCodeForRoute(origin, destination) {
+  const from = String(origin || "");
+  const to = String(destination || "");
+  if (from.length === 6 && to.length === 6 && from.slice(0, 3) === to.slice(0, 3)) return "A";
+  if (from[0] && from[0] === to[0]) return "B";
+  const metroPrefixes = new Set(["110", "122", "201", "400", "560", "600", "700", "500", "380", "411"]);
+  if (metroPrefixes.has(from.slice(0, 3)) && metroPrefixes.has(to.slice(0, 3))) return "C";
+  return "D";
+}
+
+function slabIndexForWeight(weightSlabs, chargeableGrams) {
+  const index = (weightSlabs || []).findIndex((slab, i) => {
+    const min = toNumber(slab.minWeight);
+    const max = slab.maxWeight === null || slab.maxWeight === undefined ? null : toNumber(slab.maxWeight);
+    if (i === 0 && chargeableGrams <= (max ?? Infinity)) return true;
+    return chargeableGrams > min && (max === null || chargeableGrams <= max);
+  });
+  return index >= 0 ? index : Math.max(0, (weightSlabs || []).length - 1);
+}
+
+function b2cRatesFromAdminPricing(params) {
+  const data = ensureB2cPricingSeed(readData());
+  const chargeableKg = b2cChargeableKg(params.weight, params.length, params.breadth, params.height);
+  const chargeableGrams = Math.ceil(chargeableKg * 1000);
+  const zoneCode = b2cZoneCodeForRoute(params.origin, params.destination);
+  const plan = String(params.plan || defaultSeller().plan || "basic").toLowerCase();
+  const pricingRows = (data.b2cPricing || []).filter((item) => String(item.plan || "basic").toLowerCase() === plan);
+  const rows = pricingRows.length ? pricingRows : data.b2cPricing || [];
+
+  return rows.flatMap((pricing, index) => {
+    const zoneRate = (pricing.zoneRates || []).find((item) => item.zone?.code === zoneCode)
+      || (pricing.zoneRates || []).find((item) => item.zone?.code === "D")
+      || (pricing.zoneRates || [])[0];
+    if (!zoneRate) return [];
+    const slabIndex = slabIndexForWeight(pricing.weightSlabs, chargeableGrams);
+    const slab = zoneRate.slabRates?.[slabIndex] || zoneRate.slabRates?.[zoneRate.slabRates.length - 1];
+    if (!slab) return [];
+
+    const forward = round(toNumber(slab.forward), 2);
+    const rto = round(toNumber(slab.rto), 2);
+    const cod = params.paymentType === "cod"
+      ? Math.max(round(toNumber(slab.codCharges), 2), round(toNumber(params.orderAmount) * toNumber(slab.codPercent) / 100, 2))
+      : 0;
+    const otherCharges = round(toNumber(pricing.otherCharges), 2);
+    const totalCharge = round(forward + cod + otherCharges, 2);
+    return [{
+      courierId: providerCourierId(pricing.courier?.id),
+      name: pricing.courier?.name || courierName(pricing.courier?.id),
+      serviceProvider: pricing.courier?.serviceProvider || "teampafex",
+      serviceProviderDisplayName: "Teampafex",
+      logo: null,
+      mode: pricing.mode || "surface",
+      zone: { code: zoneRate.zone?.code || zoneCode, name: zoneRate.zone?.name || "National" },
+      chargeableWeight: chargeableGrams,
+      minWeight: pricing.weightSlabs?.[slabIndex]?.minWeight ?? 500,
+      rate: {
+        forward,
+        rto,
+        codCharges: cod,
+        otherCharges,
+        freightCharge: forward,
+        totalCharge,
+      },
+      tag: index === 0 ? "economy" : undefined,
+    }];
+  });
+}
+
+function listB2cZonesResponse(query = {}) {
+  const data = ensureB2cPricingSeed(readData());
+  const search = String(query.search || "").trim().toLowerCase();
+  let zones = data.b2cZones || [];
+  if (search) {
+    zones = zones.filter((zone) => [zone.code, zone.name, zone.description].join(" ").toLowerCase().includes(search));
+  }
+  const page = Math.max(1, Number(query.page || 1));
+  const limit = Math.max(1, Number(query.limit || 50));
+  const start = (page - 1) * limit;
+  return {
+    zones: zones.slice(start, start + limit),
+    pagination: { page, limit, total: zones.length, totalPages: Math.max(1, Math.ceil(zones.length / limit)) },
+    stats: {
+      total: zones.length,
+      active: zones.filter((zone) => zone.isActive).length,
+      inactive: zones.filter((zone) => !zone.isActive).length,
+    },
+  };
+}
+
+function listB2cPricingResponse(query = {}) {
+  const data = ensureB2cPricingSeed(readData());
+  let pricing = data.b2cPricing || [];
+  if (query.plan) pricing = pricing.filter((item) => item.plan === query.plan);
+  if (query.courier) {
+    const courier = normalizeCourierId(query.courier);
+    pricing = pricing.filter((item) => normalizeCourierId(item.courier?.id) === courier);
+  }
+  if (query.serviceProvider) pricing = pricing.filter((item) => item.courier?.serviceProvider === query.serviceProvider);
+  if (query.mode) pricing = pricing.filter((item) => item.mode === query.mode);
+  if (query.minWeight !== undefined) pricing = pricing.filter((item) => toNumber(item.weightSlabs?.[0]?.minWeight) >= toNumber(query.minWeight));
+  const page = Math.max(1, Number(query.page || 1));
+  const limit = Math.max(1, Number(query.limit || 50));
+  const start = (page - 1) * limit;
+  return {
+    pricing: pricing.slice(start, start + limit),
+    pagination: { page, limit, total: pricing.length, totalPages: Math.max(1, Math.ceil(pricing.length / limit)) },
+  };
+}
+
 async function cancelProviderOrder(order, reason = "") {
   if (!order.providerOrderId && !order.id) return null;
   const body = new URLSearchParams({
@@ -1998,10 +2233,12 @@ app.post("/api/pickup-addresses", async (req, res, next) => {
 
 app.post("/api/rates/available", async (req, res) => {
   try {
+    const adminRates = b2cRatesFromAdminPricing(req.body);
     const data = await shippingRates(req.body, "B2C");
-    res.json({ success: true, data: mergeCourierOptions(data, fallbackB2cRates(req.body)) });
+    res.json({ success: true, data: mergeCourierOptions(adminRates.length ? adminRates : fallbackB2cRates(req.body), data) });
   } catch {
-    res.json({ success: true, data: fallbackB2cRates(req.body) });
+    const adminRates = b2cRatesFromAdminPricing(req.body);
+    res.json({ success: true, data: adminRates.length ? adminRates : fallbackB2cRates(req.body) });
   }
 });
 
@@ -2140,6 +2377,138 @@ app.post("/api/wallet/recharge/verify", (req, res, next) => {
   } catch (err) {
     return next(err);
   }
+});
+
+app.get("/api/rates/rate-card", (_req, res) => {
+  const data = ensureB2cPricingSeed(readData());
+  const plan = defaultSeller().plan || "basic";
+  res.json({
+    plan,
+    pricing: (data.b2cPricing || []).filter((item) => item.plan === plan),
+  });
+});
+
+app.get("/api/admin/b2c-zones", (req, res) => {
+  res.json(listB2cZonesResponse(req.query));
+});
+
+app.post("/api/admin/b2c-zones", (req, res) => {
+  const data = ensureB2cPricingSeed(readData());
+  const now = nowIso();
+  const zone = {
+    id: `b2c-zone-${String(req.body?.code || req.body?.name || Date.now()).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    code: String(req.body?.code || "").trim().toUpperCase(),
+    name: String(req.body?.name || "").trim(),
+    description: String(req.body?.description || ""),
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+  data.b2cZones = [zone, ...(data.b2cZones || [])];
+  writeData(data);
+  res.json({ zone });
+});
+
+app.put("/api/admin/b2c-zones/:id", (req, res) => {
+  const data = ensureB2cPricingSeed(readData());
+  const zones = data.b2cZones || [];
+  const current = zones.find((zone) => zone.id === req.params.id);
+  if (!current) return res.status(404).json({ error: "Zone not found" });
+  const updated = {
+    ...current,
+    ...req.body,
+    code: req.body?.code ? String(req.body.code).trim().toUpperCase() : current.code,
+    updatedAt: nowIso(),
+  };
+  data.b2cZones = zones.map((zone) => (zone.id === current.id ? updated : zone));
+  data.b2cPricing = (data.b2cPricing || []).map((pricing) => ({
+    ...pricing,
+    zoneRates: (pricing.zoneRates || []).map((zoneRate) => (
+      zoneRate.zone?.id === current.id ? { ...zoneRate, zone: { id: updated.id, name: updated.name, code: updated.code } } : zoneRate
+    )),
+  }));
+  writeData(data);
+  return res.json({ zone: updated });
+});
+
+app.delete("/api/admin/b2c-zones/:id", (req, res) => {
+  const data = ensureB2cPricingSeed(readData());
+  data.b2cZones = (data.b2cZones || []).filter((zone) => zone.id !== req.params.id);
+  data.b2cPricing = (data.b2cPricing || []).map((pricing) => ({
+    ...pricing,
+    zoneRates: (pricing.zoneRates || []).filter((zoneRate) => zoneRate.zone?.id !== req.params.id),
+  }));
+  writeData(data);
+  res.status(204).end();
+});
+
+app.patch("/api/admin/b2c-zones/:id/toggle", (req, res) => {
+  const data = ensureB2cPricingSeed(readData());
+  const zones = data.b2cZones || [];
+  const current = zones.find((zone) => zone.id === req.params.id);
+  if (!current) return res.status(404).json({ error: "Zone not found" });
+  const updated = { ...current, isActive: !current.isActive, updatedAt: nowIso() };
+  data.b2cZones = zones.map((zone) => (zone.id === current.id ? updated : zone));
+  writeData(data);
+  res.json({ message: "Zone updated", zone: updated });
+});
+
+app.get("/api/admin/b2c-pricing", (req, res) => {
+  res.json(listB2cPricingResponse(req.query));
+});
+
+app.get("/api/admin/b2c-pricing/courier/:courierId", (req, res) => {
+  const data = ensureB2cPricingSeed(readData());
+  const courier = normalizeCourierId(req.params.courierId);
+  const pricing = (data.b2cPricing || []).find((item) => (
+    normalizeCourierId(item.courier?.id) === courier && (!req.query.plan || item.plan === req.query.plan)
+  ));
+  res.json({ pricing: pricing || null });
+});
+
+app.post("/api/admin/b2c-pricing", (req, res) => {
+  const data = ensureB2cPricingSeed(readData());
+  const courier = normalizeCourierId(req.body?.courierId);
+  const plan = req.body?.plan || "basic";
+  const existing = (data.b2cPricing || []).find((item) => (
+    normalizeCourierId(item.courier?.id) === courier && item.plan === plan
+  ));
+  const next = normalizeB2cPricingPayload(req.body || {}, existing);
+  data.b2cPricing = [next, ...(data.b2cPricing || []).filter((item) => item.id !== next.id)];
+  writeData(data);
+  res.json({ message: "Pricing saved", pricing: next });
+});
+
+app.post("/api/admin/b2c-pricing/batch", (req, res) => {
+  const data = ensureB2cPricingSeed(readData());
+  const planRates = req.body?.planRates || {};
+  let saved = 0;
+  Object.entries(planRates).forEach(([plan, zoneRates]) => {
+    const payload = {
+      courierId: req.body?.courierId,
+      mode: req.body?.mode || "surface",
+      otherCharges: req.body?.otherCharges || 0,
+      weightSlabs: req.body?.weightSlabs || DEFAULT_B2C_WEIGHT_SLABS,
+      plan,
+      zoneRates,
+    };
+    const courier = normalizeCourierId(payload.courierId);
+    const existing = (data.b2cPricing || []).find((item) => (
+      normalizeCourierId(item.courier?.id) === courier && item.plan === plan
+    ));
+    const next = normalizeB2cPricingPayload(payload, existing);
+    data.b2cPricing = [next, ...(data.b2cPricing || []).filter((item) => item.id !== next.id)];
+    saved += 1;
+  });
+  writeData(data);
+  res.json({ message: "Pricing saved", saved });
+});
+
+app.delete("/api/admin/b2c-pricing/:id", (req, res) => {
+  const data = ensureB2cPricingSeed(readData());
+  data.b2cPricing = (data.b2cPricing || []).filter((item) => item.id !== req.params.id);
+  writeData(data);
+  res.status(204).end();
 });
 
 app.get("/api/admin/dashboard", async (req, res) => {
