@@ -947,8 +947,8 @@ async function createProviderOrder(providerPayload, orderType = "B2C") {
   let jsonResult = null;
   try {
     jsonResult = await providerRequest("post", "/api/create_order", providerPayload, credentialType);
-    if (!isGenericOrderCreateFailure(jsonResult)) return jsonResult;
-    logProviderOrderAttempt("json-generic-failure", {
+    if (providerSucceeded(jsonResult)) return jsonResult;
+    logProviderOrderAttempt("json-provider-failure", {
       orderType,
       status: jsonResult.status,
       message: messageFromProviderData(jsonResult),
@@ -956,7 +956,6 @@ async function createProviderOrder(providerPayload, orderType = "B2C") {
       payload: providerPayload,
     });
   } catch (err) {
-    if (!String(err.message || "").toLowerCase().includes("order create failed")) throw err;
     logProviderOrderAttempt("json-http-failure", {
       orderType,
       httpStatus: err.providerStatus || err.status,
@@ -974,8 +973,8 @@ async function createProviderOrder(providerPayload, orderType = "B2C") {
       credentialType,
       { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
     );
-    if (isGenericOrderCreateFailure(formResult)) {
-      logProviderOrderAttempt("form-generic-failure", {
+    if (!providerSucceeded(formResult)) {
+      logProviderOrderAttempt("form-provider-failure", {
         orderType,
         status: formResult.status,
         message: messageFromProviderData(formResult),
