@@ -126,6 +126,12 @@ function redactProviderDebugValue(key, value) {
   if (/(mobile|phone)/.test(lowerKey)) return value ? "[redacted-phone]" : value;
   if (/email/.test(lowerKey)) return value ? "[redacted-email]" : value;
   if (/address/.test(lowerKey) && typeof value === "string") return value ? "[redacted-address]" : value;
+  if (typeof value === "string") {
+    return value
+      .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]")
+      .replace(/\b[6-9]\d{9}\b/g, "[redacted-phone]")
+      .replace(/\(SQL:.*$/s, "(SQL details redacted)");
+  }
   if (Array.isArray(value)) return value.map((item) => redactProviderDebugValue(key, item));
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([childKey, childValue]) => [
