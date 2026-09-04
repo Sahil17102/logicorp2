@@ -784,7 +784,15 @@ function isGenericOrderCreateFailure(result = {}) {
 }
 
 function providerOrdersList(result = {}) {
-  return result.orders || result.data?.orders || result.data || [];
+  const candidates = [
+    result.orders?.data,
+    result.data?.orders?.data,
+    result.data?.data,
+    result.orders,
+    result.data?.orders,
+    result.data,
+  ];
+  return candidates.find((candidate) => Array.isArray(candidate)) || [];
 }
 
 function appendFormValue(form, key, value) {
