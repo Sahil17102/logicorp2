@@ -2161,6 +2161,13 @@ async function assertBookableB2cCourier(order, deliveryPartnerId) {
   try {
     liveRates = await shippingRates(order, "B2C");
   } catch (err) {
+    const message = String(err.message || "");
+    if (message.toLowerCase().includes("no rates found")) {
+      throw Object.assign(
+        new Error("No live B2C courier rate from Teampafex for this route. Refresh courier rates before creating the order."),
+        { status: 400 },
+      );
+    }
     console.warn("[teampafex:rates:preflight]", err.message || err);
     return;
   }
