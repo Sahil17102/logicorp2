@@ -1016,10 +1016,80 @@ function mergeProviderOrderStatus(localOrder, providerOrder) {
   };
 }
 
+function providerOrderToLocalOrder(providerOrder) {
+  const status = mapProviderStatus(providerOrder.status ?? providerOrder.order_status ?? providerOrder.admin_status) || "processing";
+  const providerId = String(providerOrder.id ?? providerOrder.order_id ?? `provider-${Date.now()}`);
+  const awb = String(providerOrder.awb_no ?? providerOrder.awb ?? providerOrder.awb_number ?? "");
+  const courierId = String(providerOrder.delivery_partner_id ?? providerOrder.courier_id ?? "");
+  const courier = providerOrder.delivery_partner_name || providerOrder.courier_name || courierName(courierId);
+  const orderValue = toNumber(providerOrder.total_order_value ?? providerOrder.order_amount ?? providerOrder.payment_amount);
+  const shippingCharge = toNumber(
+    providerOrder.shipping_amount ??
+    providerOrder.shipping_charges ??
+    providerOrder.total_charges ??
+    providerOrder.freight_charge ??
+    providerOrder.total_freight,
+    0,
+  );
+  const weightKg = toNumber(providerOrder.total_weight ?? providerOrder.weight);
+  const createdAt = providerOrder.created_at
+    ? new Date(providerOrder.created_at).toISOString()
+    : providerOrder.order_date
+      ? new Date(providerOrder.order_date).toISOString()
+      : nowIso();
+
+  return {
+    id: providerId,
+    userId: defaultSeller().id,
+    orderId: providerInvoiceNumber(providerOrder) || providerId,
+    orderType: String(providerOrder.order_type || "B2C").toUpperCase(),
+    paymentType: String(providerOrder.payment_method || "PREPAID").toLowerCase() === "cod" ? "cod" : "prepaid",
+    status,
+    courierId,
+    serviceProvider: "teampafex",
+    courierName: courier || "Teampafex",
+    awb,
+    providerOrderId: providerId,
+    pickupAddressId: String(providerOrder.pickup_address_id || ""),
+    deliveryAddress: {
+      contactName: String(providerOrder.buyer_name || ""),
+      phone: String(providerOrder.buyer_mobile || ""),
+      email: providerOrder.buyer_email || undefined,
+      addressLine1: String(providerOrder.buyer_address1 || ""),
+      addressLine2: providerOrder.buyer_address2 || undefined,
+      city: String(providerOrder.buyer_city || ""),
+      state: String(providerOrder.buyer_state || ""),
+      country: String(providerOrder.country || "India"),
+      pincode: String(providerOrder.buyer_pincode || ""),
+    },
+    weight: weightKg ? Math.round(weightKg * 1000) : 0,
+    length: 0,
+    breadth: 0,
+    height: 0,
+    chargeableWeight: weightKg ? Math.round(weightKg * 1000) : 0,
+    products: [],
+    orderAmount: orderValue,
+    codAmount: toNumber(providerOrder.cod_amount),
+    rate: {
+      forward: shippingCharge,
+      rto: 0,
+      codCharges: 0,
+      otherCharges: 0,
+      freightCharge: shippingCharge,
+      totalCharge: shippingCharge,
+      zone: "",
+    },
+    shippedAt: providerOrder.manifested_at || providerOrder.shipped_at || undefined,
+    deliveredAt: providerOrder.delivered_at || undefined,
+    cancelledAt: providerOrder.cancelled_at || (status === "cancelled" ? nowIso() : undefined),
+    createdAt,
+    updatedAt: nowIso(),
+  };
+}
+
 async function syncOrdersWithProvider(orderType = "B2C") {
   const data = readData();
   const localOrders = Array.isArray(data.orders) ? data.orders : [];
-  if (localOrders.length === 0) return localOrders;
   const result = await providerRequest("get", "/api/orders", undefined, providerCredentialType(orderType));
   const providerOrders = providerOrdersList(result);
   if (!Array.isArray(providerOrders) || providerOrders.length === 0) return localOrders;
@@ -1030,6 +1100,13 @@ async function syncOrdersWithProvider(orderType = "B2C") {
     const next = mergeProviderOrderStatus(order, providerOrder);
     if (JSON.stringify(next) !== JSON.stringify(order)) changed = true;
     return next;
+  });
+  providerOrders.forEach((providerOrder) => {
+    const exists = synced.some((order) => providerOrderMatches(order, providerOrder));
+    if (!exists) {
+      synced.push(providerOrderToLocalOrder(providerOrder));
+      changed = true;
+    }
   });
   if (changed) writeData({ ...data, orders: synced });
   return synced;
