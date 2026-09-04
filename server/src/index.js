@@ -680,6 +680,7 @@ async function resolveProviderAddressIds(pickupAddressId, orderType = "B2C") {
       pickupAddressId: String(address.providerPickupAddressId),
       rtoAddressId: String(address.providerPickupAddressId),
       pickupCity: String(address.city || ""),
+      pickupPincode: String(address.pincode || ""),
     };
   }
 
