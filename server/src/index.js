@@ -819,6 +819,52 @@ function providerOrdersList(result = {}) {
   return nested[0] || [];
 }
 
+const PROVIDER_ORDER_LIST_ENDPOINTS = [
+  "/api/orders",
+  "/api/all_orders",
+  "/api/user/orders",
+  "/api/users/orders",
+  "/api/get_orders",
+  "/api/order_list",
+];
+
+async function providerOrdersRequest(credentialType = "b2c") {
+  const attempts = [];
+  let firstSuccessful = null;
+  let lastError = null;
+  for (const endpoint of PROVIDER_ORDER_LIST_ENDPOINTS) {
+    try {
+      const raw = await providerRequest("get", endpoint, undefined, credentialType);
+      const orders = providerOrdersList(raw);
+      const attempt = {
+        endpoint,
+        ok: true,
+        count: orders.length,
+        keys: raw && typeof raw === "object" && !Array.isArray(raw) ? Object.keys(raw) : [],
+        message: messageFromProviderData(raw),
+      };
+      attempts.push(attempt);
+      firstSuccessful = firstSuccessful || { endpoint, raw, orders, attempts };
+      if (orders.length > 0) return { endpoint, raw, orders, attempts };
+    } catch (err) {
+      lastError = err;
+      attempts.push({
+        endpoint,
+        ok: false,
+        status: err.status || err.providerStatus,
+        message: err.message,
+      });
+      if (![404, 405].includes(Number(err.status || err.providerStatus))) break;
+    }
+  }
+  if (firstSuccessful) return firstSuccessful;
+  if (lastError) {
+    lastError.providerOrderAttempts = attempts;
+    throw lastError;
+  }
+  return { endpoint: "", raw: null, orders: [], attempts };
+}
+
 function appendFormValue(form, key, value) {
   if (value === undefined || value === null) return;
   if (Array.isArray(value)) {
@@ -845,9 +891,7 @@ function providerInvoiceNumber(order = {}) {
 async function findProviderOrderByInvoice(invoiceNumber, orderType = "B2C") {
   if (!invoiceNumber) return null;
   const credentialType = providerCredentialType(orderType);
-  const result = await providerRequest("get", "/api/orders", undefined, credentialType);
-  const orders = providerOrdersList(result);
-  if (!Array.isArray(orders)) return null;
+  const { orders } = await providerOrdersRequest(credentialType);
   return orders.find((item) => providerInvoiceNumber(item) === String(invoiceNumber)) || null;
 }
 
@@ -1122,8 +1166,7 @@ function providerOrderToLocalOrder(providerOrder) {
 async function syncOrdersWithProvider(orderType = "B2C") {
   const data = readData();
   const localOrders = Array.isArray(data.orders) ? data.orders : [];
-  const result = await providerRequest("get", "/api/orders", undefined, providerCredentialType(orderType));
-  const providerOrders = providerOrdersList(result);
+  const { orders: providerOrders } = await providerOrdersRequest(providerCredentialType(orderType));
   if (!Array.isArray(providerOrders) || providerOrders.length === 0) return localOrders;
   let changed = false;
   const synced = localOrders.map((order) => {
@@ -1801,11 +1844,12 @@ app.get("/api/health/provider", async (_req, res) => {
 
 app.get("/api/health/provider/orders", async (_req, res) => {
   try {
-    const raw = await providerRequest("get", "/api/orders");
+    const { endpoint, raw, orders, attempts } = await providerOrdersRequest();
     const arrays = providerOrderArrays(raw).sort((a, b) => b.length - a.length);
-    const orders = providerOrdersList(raw);
     res.json({
       ok: true,
+      endpoint,
+      attempts,
       topLevelKeys: raw && typeof raw === "object" && !Array.isArray(raw) ? Object.keys(raw) : [],
       arrayLengths: arrays.map((items) => items.length).slice(0, 5),
       parsedCount: orders.length,
@@ -1816,6 +1860,7 @@ app.get("/api/health/provider/orders", async (_req, res) => {
     res.status(err.status || 500).json({
       ok: false,
       error: err.message || "Courier provider orders check failed",
+      attempts: err.providerOrderAttempts || [],
     });
   }
 });
