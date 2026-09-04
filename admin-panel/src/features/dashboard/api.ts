@@ -1,4 +1,5 @@
 import type { AdminDashboardData, DashboardFilters } from "./types";
+import { api } from "@/lib/api";
 
 const baseDashboard: AdminDashboardData = {
   overview: {
@@ -45,19 +46,11 @@ const baseDashboard: AdminDashboardData = {
 
 export const dashboardApi = {
   get: async (filters?: DashboardFilters): Promise<AdminDashboardData> => {
-    const courierInsights = filters?.serviceProvider
-      ? baseDashboard.courierInsights.filter((item) => item.courier === filters.serviceProvider)
-      : baseDashboard.courierInsights;
-
-    return {
-      ...baseDashboard,
-      courierInsights,
-      revenue: {
-        ...baseDashboard.revenue,
-        margins: filters?.serviceProvider
-          ? baseDashboard.revenue.margins.filter((item) => item.courier === filters.serviceProvider)
-          : baseDashboard.revenue.margins,
-      },
-    };
+    try {
+      const { data } = await api.get("/dashboard", { params: filters });
+      return data as AdminDashboardData;
+    } catch {
+      return baseDashboard;
+    }
   },
 };

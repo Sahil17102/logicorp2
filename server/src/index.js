@@ -955,6 +955,91 @@ function orderStats(orders) {
   return stats;
 }
 
+const ORDER_STATUSES = [
+  "created",
+  "processing",
+  "booked",
+  "pickup_initiated",
+  "shipped",
+  "in_transit",
+  "out_for_delivery",
+  "delivered",
+  "ndr",
+  "rto_initiated",
+  "rto_in_transit",
+  "rto_delivered",
+  "cancelled",
+  "lost",
+];
+
+function mapProviderStatus(status = "") {
+  const value = String(status || "").toLowerCase().replace(/[\s-]+/g, "_");
+  if (value.includes("cancel")) return "cancelled";
+  if (value.includes("lost")) return "lost";
+  if (value.includes("rto") && value.includes("delivered")) return "rto_delivered";
+  if (value.includes("rto")) return "rto_in_transit";
+  if (value.includes("ndr")) return "ndr";
+  if (value.includes("out_for_delivery") || value.includes("ofd")) return "out_for_delivery";
+  if (value.includes("delivered") || value.includes("completed")) return "delivered";
+  if (value.includes("transit") || value.includes("picked")) return "in_transit";
+  if (value.includes("ship")) return "shipped";
+  if (value.includes("manifest") || value.includes("book")) return "booked";
+  if (value.includes("process")) return "processing";
+  if (value.includes("pending") || value.includes("new")) return "created";
+  return "";
+}
+
+function providerOrderMatches(localOrder, providerOrder) {
+  const providerId = String(providerOrder.id ?? providerOrder.order_id ?? "");
+  const providerAwbNo = String(providerOrder.awb_no ?? providerOrder.awb ?? providerOrder.awb_number ?? "");
+  const providerInvoice = providerInvoiceNumber(providerOrder);
+  return (
+    (providerId && [localOrder.id, localOrder.providerOrderId].map(String).includes(providerId)) ||
+    (providerAwbNo && String(localOrder.awb || "") === providerAwbNo) ||
+    (providerInvoice && String(localOrder.orderId || "") === providerInvoice)
+  );
+}
+
+function mergeProviderOrderStatus(localOrder, providerOrder) {
+  const status = mapProviderStatus(providerOrder.status ?? providerOrder.order_status ?? providerOrder.admin_status);
+  if (!status) return localOrder;
+  const awb = String(providerOrder.awb_no ?? providerOrder.awb ?? providerOrder.awb_number ?? localOrder.awb ?? "");
+  return {
+    ...localOrder,
+    status,
+    awb,
+    providerOrderId: String(providerOrder.id ?? providerOrder.order_id ?? localOrder.providerOrderId ?? localOrder.id),
+    shippedAt: providerOrder.manifested_at || providerOrder.shipped_at || localOrder.shippedAt,
+    deliveredAt: providerOrder.delivered_at || localOrder.deliveredAt,
+    cancelledAt: providerOrder.cancelled_at || (status === "cancelled" ? localOrder.cancelledAt || nowIso() : localOrder.cancelledAt),
+    updatedAt: nowIso(),
+  };
+}
+
+async function syncOrdersWithProvider(orderType = "B2C") {
+  const data = readData();
+  const localOrders = Array.isArray(data.orders) ? data.orders : [];
+  if (localOrders.length === 0) return localOrders;
+  const result = await providerRequest("get", "/api/orders", undefined, providerCredentialType(orderType));
+  const providerOrders = providerOrdersList(result);
+  if (!Array.isArray(providerOrders) || providerOrders.length === 0) return localOrders;
+  let changed = false;
+  const synced = localOrders.map((order) => {
+    const providerOrder = providerOrders.find((item) => providerOrderMatches(order, item));
+    if (!providerOrder) return order;
+    const next = mergeProviderOrderStatus(order, providerOrder);
+    if (JSON.stringify(next) !== JSON.stringify(order)) changed = true;
+    return next;
+  });
+  if (changed) writeData({ ...data, orders: synced });
+  return synced;
+}
+
+async function currentOrders() {
+  await syncOrdersWithProvider("B2C").catch(() => null);
+  return readData().orders || [];
+}
+
 function listResponse(orders, query = {}) {
   let filtered = [...orders].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   if (query.orderType) filtered = filtered.filter((order) => order.orderType === query.orderType);
@@ -978,6 +1063,338 @@ function listResponse(orders, query = {}) {
     pagination: { page, limit, total: filtered.length, totalPages: Math.max(1, Math.ceil(filtered.length / limit)) },
     stats: orderStats(filtered),
   };
+}
+
+function parseDateAtStart(value) {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseDateAtEnd(value) {
+  if (!value) return null;
+  const date = new Date(`${value}T23:59:59.999`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dashboardRange(query = {}) {
+  const now = new Date();
+  const days = Math.max(1, Number(query.days || 30));
+  const end = parseDateAtEnd(query.to || query.endDate) || now;
+  const start = parseDateAtStart(query.from || query.startDate) || new Date(end.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+  const span = Math.max(1, end.getTime() - start.getTime() + 1);
+  return {
+    start,
+    end,
+    previousStart: new Date(start.getTime() - span),
+    previousEnd: new Date(start.getTime() - 1),
+  };
+}
+
+function orderTime(order) {
+  const time = new Date(order.createdAt || order.orderDate || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function filterDashboardOrders(orders, query = {}, range = dashboardRange(query)) {
+  return orders.filter((order) => {
+    const time = orderTime(order);
+    if (time < range.start.getTime() || time > range.end.getTime()) return false;
+    if (query.orderType && order.orderType !== query.orderType) return false;
+    if (query.paymentType && order.paymentType !== query.paymentType) return false;
+    if (query.serviceProvider) {
+      const provider = String(order.courierName || order.serviceProvider || order.courierId || "");
+      if (provider !== String(query.serviceProvider)) return false;
+    }
+    return true;
+  });
+}
+
+function statusCount(orders, statuses) {
+  return orders.filter((order) => statuses.includes(order.status)).length;
+}
+
+function revenueForOrder(order) {
+  if (["cancelled", "lost"].includes(order.status)) return 0;
+  return toNumber(order.rate?.totalCharge);
+}
+
+function deliveryDays(order) {
+  if (!order.deliveredAt) return null;
+  const start = orderTime(order);
+  const end = new Date(order.deliveredAt).getTime();
+  if (!start || !Number.isFinite(end) || end < start) return null;
+  return round((end - start) / (24 * 60 * 60 * 1000), 1);
+}
+
+function ratePercent(part, total) {
+  return total > 0 ? round((part / total) * 100, 1) : 0;
+}
+
+function groupBy(items, keyFn) {
+  return items.reduce((groups, item) => {
+    const key = keyFn(item) || "Unknown";
+    groups[key] = groups[key] || [];
+    groups[key].push(item);
+    return groups;
+  }, {});
+}
+
+function average(values) {
+  const usable = values.filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)));
+  return usable.length ? round(usable.reduce((sum, value) => sum + Number(value), 0) / usable.length, 1) : null;
+}
+
+function buildTrendPoints(orders) {
+  const groups = groupBy(orders, (order) => new Date(order.createdAt || nowIso()).toISOString().slice(0, 10));
+  return Object.keys(groups).sort().map((date) => {
+    const list = groups[date];
+    return {
+      date,
+      orders: list.length,
+      delivered: statusCount(list, ["delivered"]),
+      rto: statusCount(list, ["rto_initiated", "rto_in_transit", "rto_delivered"]),
+      revenue: round(list.reduce((sum, order) => sum + revenueForOrder(order), 0)),
+    };
+  });
+}
+
+function buildPaymentSplit(orders, key = "totalAmount") {
+  const bucket = (paymentType) => {
+    const list = orders.filter((order) => order.paymentType === paymentType);
+    return {
+      orders: list.length,
+      delivered: statusCount(list, ["delivered"]),
+      [key]: round(list.reduce((sum, order) => sum + revenueForOrder(order), 0)),
+      codAmount: round(list.reduce((sum, order) => sum + toNumber(order.codAmount), 0)),
+    };
+  };
+  return { prepaid: bucket("prepaid"), cod: bucket("cod") };
+}
+
+function buildCourierScorecard(orders) {
+  return Object.entries(groupBy(orders, (order) => order.courierName || order.serviceProvider || "Teampafex"))
+    .map(([courier, list]) => {
+      const delivered = statusCount(list, ["delivered"]);
+      const rto = statusCount(list, ["rto_initiated", "rto_in_transit", "rto_delivered"]);
+      const failed = rto + statusCount(list, ["ndr", "cancelled", "lost"]);
+      const revenue = round(list.reduce((sum, order) => sum + revenueForOrder(order), 0));
+      const avgCost = list.length ? round(revenue / list.length) : 0;
+      return {
+        courier,
+        totalOrders: list.length,
+        delivered,
+        failed,
+        successRate: ratePercent(delivered, list.length),
+        failureRate: ratePercent(failed, list.length),
+        rtoRate: ratePercent(rto, list.length),
+        avgDeliveryDays: average(list.map(deliveryDays)),
+        avgCost,
+        revenue,
+      };
+    })
+    .sort((a, b) => b.totalOrders - a.totalOrders);
+}
+
+function buildSellerDashboard(orders, query = {}) {
+  const range = dashboardRange(query);
+  const current = filterDashboardOrders(orders, query, range);
+  const previous = filterDashboardOrders(orders, query, { start: range.previousStart, end: range.previousEnd });
+  const delivered = statusCount(current, ["delivered"]);
+  const previousDelivered = statusCount(previous, ["delivered"]);
+  const rtoStatuses = ["rto_initiated", "rto_in_transit", "rto_delivered"];
+  const currentRto = statusCount(current, rtoStatuses);
+  const previousRto = statusCount(previous, rtoStatuses);
+  const paymentSplit = buildPaymentSplit(current);
+
+  return {
+    kpis: {
+      deliveryRate: { current: ratePercent(delivered, current.length), previous: ratePercent(previousDelivered, previous.length) },
+      avgDeliveryDays: { current: average(current.map(deliveryDays)), previous: average(previous.map(deliveryDays)) },
+      rtoRate: { current: ratePercent(currentRto, current.length), previous: ratePercent(previousRto, previous.length) },
+      totalOrders: { current: current.length, previous: previous.length },
+      totalCost: round(current.reduce((sum, order) => sum + revenueForOrder(order), 0)),
+    },
+    pipeline: {
+      created: statusCount(current, ["created"]),
+      processing: statusCount(current, ["processing", "booked", "pickup_initiated"]),
+      inTransit: statusCount(current, ["shipped", "in_transit"]),
+      outForDelivery: statusCount(current, ["out_for_delivery"]),
+      ndr: statusCount(current, ["ndr"]),
+      rto: currentRto,
+    },
+    trends: buildTrendPoints(current),
+    courierScorecard: buildCourierScorecard(current).map(({ failed, failureRate, revenue, ...item }) => item),
+    zonePerformance: Object.entries(groupBy(current, (order) => order.deliveryAddress?.state || order.rate?.zone || "Unknown"))
+      .map(([zone, list]) => {
+        const zoneDelivered = statusCount(list, ["delivered"]);
+        const zoneRto = statusCount(list, rtoStatuses);
+        const totalCost = list.reduce((sum, order) => sum + revenueForOrder(order), 0);
+        return {
+          zone,
+          zoneName: zone,
+          totalOrders: list.length,
+          successRate: ratePercent(zoneDelivered, list.length),
+          rtoRate: ratePercent(zoneRto, list.length),
+          avgCost: list.length ? round(totalCost / list.length) : 0,
+          avgDeliveryDays: average(list.map(deliveryDays)),
+        };
+      })
+      .sort((a, b) => b.totalOrders - a.totalOrders),
+    paymentSplit,
+    codPending: {
+      amount: paymentSplit.cod.codAmount,
+      count: paymentSplit.cod.orders,
+    },
+    topCities: Object.entries(groupBy(current, (order) => order.deliveryAddress?.city || "Unknown"))
+      .map(([city, list]) => ({ city, orders: list.length, deliveryRate: ratePercent(statusCount(list, ["delivered"]), list.length) }))
+      .sort((a, b) => b.orders - a.orders)
+      .slice(0, 8),
+  };
+}
+
+function buildSellerRows(orders) {
+  const user = defaultSeller();
+  const sellerOrders = orders.filter((order) => order.userId === user.id);
+  if (sellerOrders.length === 0) return [];
+  const rto = statusCount(sellerOrders, ["rto_initiated", "rto_in_transit", "rto_delivered"]);
+  return [{
+    id: user.id,
+    name: user.businessName || user.name,
+    email: user.email,
+    totalOrders: sellerOrders.length,
+    delivered: statusCount(sellerOrders, ["delivered"]),
+    rto,
+    revenue: round(sellerOrders.reduce((sum, order) => sum + revenueForOrder(order), 0)),
+    rtoRate: ratePercent(rto, sellerOrders.length),
+  }];
+}
+
+function buildAdminDashboard(orders, query = {}) {
+  const range = dashboardRange(query);
+  const current = filterDashboardOrders(orders, query, range);
+  const previous = filterDashboardOrders(orders, query, { start: range.previousStart, end: range.previousEnd });
+  const delivered = statusCount(current, ["delivered"]);
+  const previousDelivered = statusCount(previous, ["delivered"]);
+  const revenue = round(current.reduce((sum, order) => sum + revenueForOrder(order), 0));
+  const previousRevenue = round(previous.reduce((sum, order) => sum + revenueForOrder(order), 0));
+  const courierInsights = buildCourierScorecard(current);
+  const margins = courierInsights.map((item) => ({
+    courier: item.courier,
+    revenue: item.revenue,
+    cost: item.revenue,
+    margin: 0,
+    marginPercent: 0,
+    orderCount: item.totalOrders,
+    revenuePerOrder: item.totalOrders ? round(item.revenue / item.totalOrders) : 0,
+  }));
+  const sellerRows = buildSellerRows(current);
+  const paymentSplit = buildPaymentSplit(current, "revenue");
+  const statusDistribution = ORDER_STATUSES.map((status) => ({ status, count: statusCount(current, [status]) }));
+  const today = new Date().toISOString().slice(0, 10);
+
+  return {
+    overview: {
+      totalOrders: current.length,
+      previousOrders: previous.length,
+      ordersToday: current.filter((order) => String(order.createdAt || "").slice(0, 10) === today).length,
+      activeSellers: new Set(current.map((order) => order.userId).filter(Boolean)).size || (current.length ? 1 : 0),
+      revenue,
+      previousRevenue,
+      deliveryRate: ratePercent(delivered, current.length),
+      previousDeliveryRate: ratePercent(previousDelivered, previous.length),
+      avgDeliveryDays: average(current.map(deliveryDays)),
+    },
+    courierInsights,
+    trends: buildTrendPoints(current),
+    revenue: {
+      margins,
+      totalRevenue: revenue,
+      totalCost: revenue,
+      totalMargin: 0,
+    },
+    sellers: {
+      topSellers: sellerRows.sort((a, b) => b.revenue - a.revenue),
+      highRtoSellers: sellerRows.filter((seller) => seller.rto > 0).sort((a, b) => b.rtoRate - a.rtoRate),
+    },
+    alerts: {
+      failureSpikes: courierInsights
+        .filter((item) => item.failed > 0)
+        .map((item) => ({ courier: item.courier, total: item.totalOrders, failed: item.failed, failureRate: item.failureRate })),
+      delayedShipments: 0,
+      ndrPending: statusCount(current, ["ndr"]),
+      totalAlerts: statusCount(current, ["ndr", "lost"]),
+    },
+    pendingActions: {
+      kycPending: ensureKycSeed(readData()).kyc.status === "approved" ? 0 : 1,
+      bankApprovalsPending: 0,
+      codRemittancesPending: paymentSplit.cod.orders,
+    },
+    paymentSplit,
+    topStates: Object.entries(groupBy(current, (order) => order.deliveryAddress?.state || "Unknown"))
+      .map(([state, list]) => ({
+        state,
+        orders: list.length,
+        deliveryRate: ratePercent(statusCount(list, ["delivered"]), list.length),
+        revenue: round(list.reduce((sum, order) => sum + revenueForOrder(order), 0)),
+      }))
+      .sort((a, b) => b.orders - a.orders)
+      .slice(0, 8),
+    statusDistribution,
+  };
+}
+
+function buildHomeDashboard(orders) {
+  const today = new Date().toISOString().slice(0, 10);
+  const wallet = walletForUser(defaultSeller().id);
+  const recentOrders = [...orders]
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .slice(0, 5)
+    .map((order) => ({
+      id: order.id,
+      orderId: order.orderId,
+      awb: order.awb || "",
+      status: order.status,
+      serviceProvider: order.courierName || order.serviceProvider || "Teampafex",
+      city: order.deliveryAddress?.city || "",
+      contactName: order.deliveryAddress?.contactName || "",
+      createdAt: order.createdAt,
+    }));
+  const codOrders = orders.filter((order) => order.paymentType === "cod" && !["cancelled", "lost"].includes(order.status));
+  return {
+    quickStats: {
+      ordersToday: orders.filter((order) => String(order.createdAt || "").slice(0, 10) === today).length,
+      inTransit: statusCount(orders, ["booked", "pickup_initiated", "shipped", "in_transit", "out_for_delivery"]),
+      ndrPending: statusCount(orders, ["ndr"]),
+      rtoPending: statusCount(orders, ["rto_initiated", "rto_in_transit"]),
+    },
+    wallet: { balance: wallet.balance },
+    codPending: {
+      amount: round(codOrders.reduce((sum, order) => sum + toNumber(order.codAmount), 0)),
+      count: codOrders.length,
+    },
+    statusDistribution: ORDER_STATUSES.map((status) => ({ status, count: statusCount(orders, [status]) })).filter((item) => item.count > 0),
+    recentOrders,
+  };
+}
+
+async function cancelProviderOrder(order, reason = "") {
+  if (!order.providerOrderId && !order.id) return null;
+  const body = new URLSearchParams({
+    order_id: String(order.providerOrderId || order.id),
+    reason: reason || "Cancelled from Logicorp",
+  });
+  const result = await providerRequest(
+    "post",
+    "/api/cancel_order",
+    body,
+    providerCredentialType(order.orderType),
+    { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
+  );
+  if (!providerSucceeded(result) && !String(messageFromProviderData(result)).toLowerCase().includes("cancel")) {
+    throw Object.assign(new Error(messageFromProviderData(result) || "Teampafex cancel failed"), { status: 400, providerData: result });
+  }
+  return result;
 }
 
 function walletIdForUser(userId = defaultSeller().id) {
@@ -1345,8 +1762,48 @@ app.post("/api/orders", async (req, res, next) => {
   }
 });
 
-app.get("/api/orders", (req, res) => {
-  res.json(listResponse(readData().orders || [], req.query));
+app.get("/api/dashboard/home", async (_req, res) => {
+  const orders = await currentOrders();
+  res.json(buildHomeDashboard(orders));
+});
+
+app.get("/api/dashboard/summary", async (req, res) => {
+  const orders = await currentOrders();
+  res.json(buildSellerDashboard(orders, req.query));
+});
+
+app.get("/api/orders", async (req, res) => {
+  const orders = await currentOrders();
+  res.json(listResponse(orders, req.query));
+});
+
+app.get("/api/orders/courier-options", async (req, res) => {
+  const orders = await currentOrders();
+  const filtered = req.query.orderType ? orders.filter((order) => order.orderType === req.query.orderType) : orders;
+  const couriers = Object.values(filtered.reduce((acc, order) => {
+    const id = String(order.courierId || order.serviceProvider || "");
+    if (!id) return acc;
+    acc[id] = { id, name: order.courierName || order.serviceProvider || id };
+    return acc;
+  }, {}));
+  res.json({ couriers });
+});
+
+app.post("/api/orders/:id/cancel", async (req, res, next) => {
+  try {
+    const data = readData();
+    const order = (data.orders || []).find((item) => item.id === req.params.id || item.orderId === req.params.id || item.providerOrderId === req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.status !== "cancelled") {
+      await cancelProviderOrder(order, req.body?.reason);
+    }
+    const updated = { ...order, status: "cancelled", cancelledAt: order.cancelledAt || nowIso(), updatedAt: nowIso() };
+    data.orders = [updated, ...(data.orders || []).filter((item) => item.id !== order.id)];
+    writeData(data);
+    return res.json({ order: updated });
+  } catch (err) {
+    return next(err);
+  }
 });
 
 app.get("/api/orders/:id", (req, res) => {
@@ -1391,8 +1848,31 @@ app.post("/api/wallet/recharge/verify", (req, res, next) => {
   }
 });
 
-app.get("/api/admin/orders", (req, res) => {
-  res.json(listResponse(readData().orders || [], req.query));
+app.get("/api/admin/dashboard", async (req, res) => {
+  const orders = await currentOrders();
+  res.json(buildAdminDashboard(orders, req.query));
+});
+
+app.get("/api/admin/orders", async (req, res) => {
+  const orders = await currentOrders();
+  res.json(listResponse(orders, req.query));
+});
+
+app.post("/api/admin/orders/:id/cancel", async (req, res, next) => {
+  try {
+    const data = readData();
+    const order = (data.orders || []).find((item) => item.id === req.params.id || item.orderId === req.params.id || item.providerOrderId === req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.status !== "cancelled") {
+      await cancelProviderOrder(order, req.body?.reason);
+    }
+    const updated = { ...order, status: "cancelled", cancelledAt: order.cancelledAt || nowIso(), updatedAt: nowIso() };
+    data.orders = [updated, ...(data.orders || []).filter((item) => item.id !== order.id)];
+    writeData(data);
+    return res.json({ order: updated });
+  } catch (err) {
+    return next(err);
+  }
 });
 
 app.get("/api/admin/orders/:id", (req, res) => {
