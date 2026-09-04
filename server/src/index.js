@@ -213,14 +213,15 @@ async function refreshProviderJwt(type = "b2c") {
   return { token: login.token, baseUrl: login.baseUrl };
 }
 
-async function providerRequest(method, url, data, type = "b2c") {
+async function providerRequest(method, url, data, type = "b2c", config = {}) {
   const { token, baseUrl } = await providerAuth(type);
   try {
     const res = await providerHttp(baseUrl).request({
       method,
       url,
       data,
-      headers: { Authorization: `Bearer ${token}` },
+      ...config,
+      headers: { ...(config.headers || {}), Authorization: `Bearer ${token}` },
     });
     return res.data;
   } catch (err) {
@@ -233,7 +234,8 @@ async function providerRequest(method, url, data, type = "b2c") {
           method,
           url,
           data,
-          headers: { Authorization: `Bearer ${refreshed.token}` },
+          ...config,
+          headers: { ...(config.headers || {}), Authorization: `Bearer ${refreshed.token}` },
         });
         return retry.data;
       } catch (retryErr) {
@@ -744,8 +746,32 @@ function providerSucceeded(result = {}) {
   return result.status === true || result.success === true || result.status === 1 || result.success === 1 || result.status === "true" || result.success === "true";
 }
 
+function isGenericOrderCreateFailure(result = {}) {
+  const message = messageFromProviderData(result).toLowerCase();
+  return !providerSucceeded(result) && (!message || message === "order create failed" || message.includes("order create failed"));
+}
+
 function providerOrdersList(result = {}) {
   return result.orders || result.data?.orders || result.data || [];
+}
+
+function appendFormValue(form, key, value) {
+  if (value === undefined || value === null) return;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => appendFormValue(form, `${key}[${index}]`, item));
+    return;
+  }
+  if (typeof value === "object") {
+    Object.entries(value).forEach(([childKey, childValue]) => appendFormValue(form, `${key}[${childKey}]`, childValue));
+    return;
+  }
+  form.append(key, String(value));
+}
+
+function toFormPayload(payload) {
+  const form = new URLSearchParams();
+  Object.entries(payload || {}).forEach(([key, value]) => appendFormValue(form, key, value));
+  return form;
 }
 
 function providerInvoiceNumber(order = {}) {
@@ -759,6 +785,24 @@ async function findProviderOrderByInvoice(invoiceNumber, orderType = "B2C") {
   const orders = providerOrdersList(result);
   if (!Array.isArray(orders)) return null;
   return orders.find((item) => providerInvoiceNumber(item) === String(invoiceNumber)) || null;
+}
+
+async function createProviderOrder(providerPayload, orderType = "B2C") {
+  const credentialType = providerCredentialType(orderType);
+  try {
+    return await providerRequest("post", "/api/create_order", providerPayload, credentialType);
+  } catch (err) {
+    if (!String(err.message || "").toLowerCase().includes("order create failed")) throw err;
+  }
+
+  const formResult = await providerRequest(
+    "post",
+    "/api/create_order",
+    toFormPayload(providerPayload),
+    credentialType,
+    { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
+  );
+  return formResult;
 }
 
 function courierName(courierId) {
@@ -1206,11 +1250,10 @@ app.post("/api/rates/b2b/available", async (req, res) => {
 
 app.post("/api/orders", async (req, res, next) => {
   try {
-    const credentialType = providerCredentialType(req.body.orderType);
     const providerAddressIds = await resolveProviderAddressIds(req.body.pickupAddressId, req.body.orderType);
     const deliveryPartnerId = await resolveDeliveryPartnerId(req.body.courierId, req.body.courierName, req.body.orderType);
     const providerPayload = providerCreatePayload(req.body, providerAddressIds, deliveryPartnerId);
-    const providerResult = await providerRequest("post", "/api/create_order", providerPayload, credentialType);
+    const providerResult = await createProviderOrder(providerPayload, req.body.orderType);
     if (!providerSucceeded(providerResult)) {
       const reconciled = await findProviderOrderByInvoice(providerPayload.invoice_number, req.body.orderType).catch(() => null);
       if (!reconciled) {
