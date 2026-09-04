@@ -312,6 +312,7 @@ function toProviderCreateOrderPayload(
 
   const totalWeight = round(packages.reduce((sum, pkg) => sum + toNumber(pkg.total_weight ?? pkg.weight), 0));
   const totalVolumetricWeight = round(packages.reduce((sum, pkg) => sum + toNumber(pkg.volumetric_weight), 0));
+  const chargeableWeight = Math.max(totalWeight, totalVolumetricWeight, isB2B ? 1 : 0.5);
   const firstInvoice = data.invoices?.[0];
   const products = data.products.map((product) => {
     const total = product.unitPrice * product.quantity;
@@ -340,20 +341,36 @@ function toProviderCreateOrderPayload(
     reseller_name: "",
     eway_bill_no: firstInvoice?.ebn || "",
     dimension_unit: "cm",
+    rov: "Owner Risk",
     total_order_value: String(round(data.orderAmount, 2)),
+    payment_amount: String(round(data.orderAmount, 2)),
+    order_amount: String(round(data.orderAmount, 2)),
     products,
+    product_name: products.map((product) => product.product_name),
+    product_sku: products.map((product) => product.sku),
+    sku: products.map((product) => product.sku),
+    rate: products.map((product) => product.rate),
+    quantity: products.map((product) => product.quantity),
+    tax_rate: products.map((product) => product.tax_rate),
+    total: products.map((product) => product.total),
     payment_method: data.paymentType === "cod" ? "COD" : "PREPAID",
     cod_amount: data.paymentType === "cod" ? String(round(data.codAmount, 2)) : null,
     no_of_box: String(packages.length),
     total_weight: String(totalWeight),
     total_volumetric_weight: String(totalVolumetricWeight),
+    chargeable_weight: String(chargeableWeight),
     packages,
+    pickup_code: "",
+    delivery_code: data.pincode,
     pickup_address_city_name: providerPickupAddress.city || data.city,
     pickup_address_id: providerPickupAddressId,
     rto_address_id: providerPickupAddressId,
     submit_value: "Save Order",
     order_type: data.orderType,
+    calculator_type: data.orderType,
     delivery_partner_id: /^\d+$/.test(data.courierId) ? Number(data.courierId) : data.courierId,
+    courier_id: /^\d+$/.test(data.courierId) ? Number(data.courierId) : data.courierId,
+    delivery_patner_id: /^\d+$/.test(data.courierId) ? Number(data.courierId) : data.courierId,
   };
 }
 

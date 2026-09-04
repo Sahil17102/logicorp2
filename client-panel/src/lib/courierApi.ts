@@ -23,7 +23,7 @@ export function isCourierApiConfigured(): boolean {
 export function shouldUseCourierApi(): boolean {
   if (courierApiFlag === "true") return true;
   if (courierApiFlag === "false") return false;
-  return isCourierApiConfigured();
+  return false;
 }
 
 function readStoredToken(): string | null {
@@ -293,20 +293,36 @@ export interface CourierCreateOrderPayload {
   reseller_name?: string;
   eway_bill_no?: string;
   dimension_unit: "cm" | "inch";
+  rov?: "Owner Risk" | "Carrier Risk" | string;
   total_order_value: string;
+  payment_amount?: string;
+  order_amount?: string;
   products: CourierProductPayload[];
+  product_name?: string[];
+  product_sku?: string[];
+  sku?: string[];
+  rate?: string[];
+  quantity?: string[];
+  tax_rate?: string[];
+  total?: string[];
   payment_method: "PREPAID" | "COD" | string;
   cod_amount: string | null;
   no_of_box: string;
   total_weight: string;
   total_volumetric_weight: string;
+  chargeable_weight?: string;
   packages: CourierPackagePayload[];
+  pickup_code?: string;
+  delivery_code?: string;
   pickup_address_city_name: string;
   pickup_address_id: string;
   rto_address_id?: string;
   submit_value: string;
   order_type: "B2B" | "B2C";
+  calculator_type?: "B2B" | "B2C";
   delivery_partner_id: number | string;
+  courier_id?: number | string;
+  delivery_patner_id?: number | string;
 }
 
 export interface CourierCreateOrderResponse {

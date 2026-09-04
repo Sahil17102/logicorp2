@@ -485,7 +485,13 @@ export const ratesApi = {
     if (shouldUseCourierApi()) {
       try {
         const couriers = await getCourierApiRates(params);
-        if (couriers.length > 0) return couriers;
+        if (couriers.length > 0) {
+          const seen = new Set(couriers.map((item) => item.courierId));
+          return [
+            ...couriers,
+            ...makeFallbackB2cRates(params).filter((item) => !seen.has(item.courierId)),
+          ];
+        }
       } catch {
         // Keep courier selection usable on static deploys even before the courier token is present.
       }
@@ -497,7 +503,14 @@ export const ratesApi = {
         "/rates/available",
         params,
       );
-      return Array.isArray(data.data) && data.data.length > 0 ? data.data : makeFallbackB2cRates(params);
+      if (Array.isArray(data.data) && data.data.length > 0) {
+        const seen = new Set(data.data.map((item) => item.courierId));
+        return [
+          ...data.data,
+          ...makeFallbackB2cRates(params).filter((item) => !seen.has(item.courierId)),
+        ];
+      }
+      return makeFallbackB2cRates(params);
     } catch {
       return makeFallbackB2cRates(params);
     }

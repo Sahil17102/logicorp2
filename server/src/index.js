@@ -697,6 +697,7 @@ function providerCreatePayload(order, providerAddressIds, deliveryPartnerId = or
     : [packagePayload({ weightKg: b2cChargeableKg(order.weight, order.length, order.breadth, order.height), length: order.length, breadth: order.breadth, height: order.height })];
   const totalWeight = round(packages.reduce((sum, pkg) => sum + toNumber(pkg.total_weight ?? pkg.weight), 0), 3);
   const totalVolumetricWeight = round(packages.reduce((sum, pkg) => sum + toNumber(pkg.volumetric_weight), 0), 3);
+  const chargeableWeight = Math.max(totalWeight, totalVolumetricWeight, isB2B ? 1 : 0.5);
   const orderValue = round(order.orderAmount, 2);
   const codAmount = order.paymentType === "cod" ? round(order.codAmount, 2) : 0;
   const numericPickupAddressId = /^\d+$/.test(String(providerPickupAddressId)) ? Number(providerPickupAddressId) : providerPickupAddressId;
@@ -748,13 +749,19 @@ function providerCreatePayload(order, providerAddressIds, deliveryPartnerId = or
     no_of_box: String(packages.length),
     total_weight: String(totalWeight),
     total_volumetric_weight: String(totalVolumetricWeight),
+    chargeable_weight: String(chargeableWeight),
     packages,
+    pickup_code: "",
+    delivery_code: order.pincode,
     pickup_address_city_name: providerAddressIds.pickupCity || order.city || "",
     pickup_address_id: numericPickupAddressId,
     rto_address_id: numericRtoAddressId,
     submit_value: "Save Order",
     order_type: order.orderType,
+    calculator_type: order.orderType,
     delivery_partner_id: /^\d+$/.test(String(deliveryPartnerId)) ? Number(deliveryPartnerId) : deliveryPartnerId,
+    courier_id: /^\d+$/.test(String(deliveryPartnerId)) ? Number(deliveryPartnerId) : deliveryPartnerId,
+    delivery_patner_id: /^\d+$/.test(String(deliveryPartnerId)) ? Number(deliveryPartnerId) : deliveryPartnerId,
   };
 }
 
@@ -1749,6 +1756,65 @@ function fallbackB2cRates(params) {
   });
 }
 
+function mergeCourierOptions(primary, fallback) {
+  const seen = new Set();
+  return [...(primary || []), ...(fallback || [])].filter((item) => {
+    const key = String(item.courierId || item.name || "").toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function fallbackB2bRates(params) {
+  const packages = Array.isArray(params.packages) && params.packages.length
+    ? params.packages.map((pkg) => {
+        const deadWeight = toNumber(pkg.weight ?? pkg.weightKg, 1);
+        const volumetricWeight = volumetricKg(pkg.length, pkg.breadth ?? pkg.width, pkg.height);
+        return {
+          deadWeight,
+          volumetricWeight,
+          billableWeight: Math.max(deadWeight, volumetricWeight),
+        };
+      })
+    : [{ deadWeight: 1, volumetricWeight: 0, billableWeight: 1 }];
+  const billableWeight = Math.max(1, round(packages.reduce((sum, pkg) => sum + pkg.billableWeight, 0), 3));
+  const baseFreight = round(Math.max(220, billableWeight * 42));
+  const fuel = round(baseFreight * 0.18);
+  const cod = params.paymentType === "cod" ? Math.max(35, round(toNumber(params.orderAmount || params.declaredValue) * 0.02)) : 0;
+  const gst = round((baseFreight + fuel + cod) * 0.18);
+  const total = round(baseFreight + fuel + cod + gst);
+
+  return [{
+    courierId: "152",
+    name: "Delhivery B2B",
+    serviceProvider: "delhivery_b2b",
+    serviceProviderDisplayName: "Teampafex",
+    logo: null,
+    zone: {
+      originCode: params.origin,
+      originName: params.origin,
+      destinationCode: params.destination,
+      destinationName: params.destination,
+    },
+    billableWeight,
+    packages,
+    rate: {
+      baseFreight,
+      overheads: [
+        { code: "FSC", name: "Fuel Surcharge", type: "percent", amount: fuel },
+        ...(cod > 0 ? [{ code: "COD", name: "COD Charges", type: "fixed", amount: cod }] : []),
+        { code: "GST", name: "GST", type: "percent", amount: gst },
+      ],
+      rtoRate: round(baseFreight * 0.8),
+      total,
+      billableWeight,
+      packages,
+    },
+    tag: "economy",
+  }];
+}
+
 function mapProviderRate(rate, index, params, orderType, partners = []) {
   const name = String(rate.delivery_partner_name || rate.name || courierName(rate.delivery_partner_id || rate.courier_id || rate.id) || `Courier ${index + 1}`);
   const partnerId = matchingPartnerId(partners, name);
@@ -1910,7 +1976,7 @@ app.post("/api/pickup-addresses", async (req, res, next) => {
 app.post("/api/rates/available", async (req, res) => {
   try {
     const data = await shippingRates(req.body, "B2C");
-    res.json({ success: true, data: data.length ? data : fallbackB2cRates(req.body) });
+    res.json({ success: true, data: mergeCourierOptions(data, fallbackB2cRates(req.body)) });
   } catch {
     res.json({ success: true, data: fallbackB2cRates(req.body) });
   }
@@ -1933,20 +1999,9 @@ app.post("/api/rates/b2b/available", async (req, res) => {
         packages: req.body.packages || [],
       },
     }));
-    res.json({ success: true, data: mapped });
+    res.json({ success: true, data: mapped.length ? mapped : fallbackB2bRates(req.body) });
   } catch {
-    res.json({ success: true, data: [{
-      courierId: "152",
-      name: "Delhivery B2B",
-      serviceProvider: "delhivery_b2b",
-      serviceProviderDisplayName: "Teampafex",
-      logo: null,
-      zone: { originCode: req.body.origin, originName: req.body.origin, destinationCode: req.body.destination, destinationName: req.body.destination },
-      billableWeight: 1,
-      packages: req.body.packages || [],
-      rate: { baseFreight: 220, overheads: [{ code: "GST", name: "GST", type: "fixed", amount: 39.6 }], rtoRate: 176, total: 259.6, billableWeight: 1, packages: req.body.packages || [] },
-      tag: "economy",
-    }] });
+    res.json({ success: true, data: fallbackB2bRates(req.body) });
   }
 });
 
