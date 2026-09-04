@@ -115,8 +115,33 @@ function providerError(err) {
   const message = providerMessage || err?.message || "Courier provider request failed";
   const error = new Error(message);
   error.status = err?.response?.status || 500;
+  error.providerStatus = err?.response?.status;
   error.providerData = data;
   return error;
+}
+
+function redactProviderDebugValue(key, value) {
+  const lowerKey = String(key || "").toLowerCase();
+  if (/(authorization|token|password|secret|key)/.test(lowerKey)) return "[redacted]";
+  if (/(mobile|phone)/.test(lowerKey)) return value ? "[redacted-phone]" : value;
+  if (/email/.test(lowerKey)) return value ? "[redacted-email]" : value;
+  if (/address/.test(lowerKey) && typeof value === "string") return value ? "[redacted-address]" : value;
+  if (Array.isArray(value)) return value.map((item) => redactProviderDebugValue(key, item));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([childKey, childValue]) => [
+      childKey,
+      redactProviderDebugValue(childKey, childValue),
+    ]));
+  }
+  return value;
+}
+
+function redactedProviderDebug(data) {
+  return redactProviderDebugValue("", data);
+}
+
+function logProviderOrderAttempt(stage, details) {
+  console.warn(`[teampafex:create_order:${stage}]`, JSON.stringify(redactedProviderDebug(details)));
 }
 
 function extractProviderToken(data) {
@@ -789,20 +814,57 @@ async function findProviderOrderByInvoice(invoiceNumber, orderType = "B2C") {
 
 async function createProviderOrder(providerPayload, orderType = "B2C") {
   const credentialType = providerCredentialType(orderType);
+  let jsonResult = null;
   try {
-    return await providerRequest("post", "/api/create_order", providerPayload, credentialType);
+    jsonResult = await providerRequest("post", "/api/create_order", providerPayload, credentialType);
+    if (!isGenericOrderCreateFailure(jsonResult)) return jsonResult;
+    logProviderOrderAttempt("json-generic-failure", {
+      orderType,
+      status: jsonResult.status,
+      message: messageFromProviderData(jsonResult),
+      response: jsonResult,
+      payload: providerPayload,
+    });
   } catch (err) {
     if (!String(err.message || "").toLowerCase().includes("order create failed")) throw err;
+    logProviderOrderAttempt("json-http-failure", {
+      orderType,
+      httpStatus: err.providerStatus || err.status,
+      message: err.message,
+      response: err.providerData,
+      payload: providerPayload,
+    });
   }
 
-  const formResult = await providerRequest(
-    "post",
-    "/api/create_order",
-    toFormPayload(providerPayload),
-    credentialType,
-    { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
-  );
-  return formResult;
+  try {
+    const formResult = await providerRequest(
+      "post",
+      "/api/create_order",
+      toFormPayload(providerPayload),
+      credentialType,
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
+    );
+    if (isGenericOrderCreateFailure(formResult)) {
+      logProviderOrderAttempt("form-generic-failure", {
+        orderType,
+        status: formResult.status,
+        message: messageFromProviderData(formResult),
+        response: formResult,
+        payload: providerPayload,
+      });
+    }
+    return formResult;
+  } catch (err) {
+    logProviderOrderAttempt("form-http-failure", {
+      orderType,
+      httpStatus: err.providerStatus || err.status,
+      message: err.message,
+      response: err.providerData,
+      payload: providerPayload,
+    });
+    if (jsonResult) return jsonResult;
+    throw err;
+  }
 }
 
 function courierName(courierId) {
