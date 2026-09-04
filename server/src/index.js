@@ -2152,6 +2152,29 @@ async function shippingRates(params, orderType) {
   return (response.shipping_data || []).map((rate, index) => mapProviderRate(rate, index, { ...params, weight: chargeable * 1000 }, orderType, partners));
 }
 
+async function assertBookableB2cCourier(order, deliveryPartnerId) {
+  if (String(order.orderType || "B2C").toUpperCase() !== "B2C") return;
+  const selectedId = String(deliveryPartnerId || "").trim();
+  if (!selectedId) return;
+
+  let liveRates = [];
+  try {
+    liveRates = await shippingRates(order, "B2C");
+  } catch (err) {
+    console.warn("[teampafex:rates:preflight]", err.message || err);
+    return;
+  }
+  if (!Array.isArray(liveRates) || liveRates.length === 0) return;
+  if (liveRates.some((rate) => String(rate.courierId) === selectedId)) return;
+
+  const availableCouriers = liveRates.map((rate) => rate.name).filter(Boolean).join(", ");
+  const courierLabel = order.courierName || courierName(selectedId);
+  throw Object.assign(
+    new Error(`${courierLabel} is not available from Teampafex for this B2C route. Refresh courier rates and choose ${availableCouriers || "an available courier"}.`),
+    { status: 400 },
+  );
+}
+
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.get("/api/health/config", (_req, res) => {
@@ -2291,6 +2314,7 @@ app.post("/api/orders", async (req, res, next) => {
   try {
     const providerAddressIds = await resolveProviderAddressIds(req.body.pickupAddressId, req.body.orderType);
     const deliveryPartnerId = await resolveDeliveryPartnerId(req.body.courierId, req.body.courierName, req.body.orderType);
+    await assertBookableB2cCourier(req.body, deliveryPartnerId);
     const providerPayload = providerCreatePayload(req.body, providerAddressIds, deliveryPartnerId);
     const providerResult = await createProviderOrder(providerPayload, req.body.orderType);
     if (!providerSucceeded(providerResult)) {
