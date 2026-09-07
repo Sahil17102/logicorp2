@@ -223,8 +223,8 @@ function makeFallbackB2cRates(params: AvailableCouriersParams): AvailableCourier
   const slabs = Math.max(1, Math.ceil(chargeableKg / 0.5));
   const cod = codCharge(params.paymentType, params.orderAmount);
   const options = [
-    { courierId: "80", name: "DLVY Standard", freightPerSlab: 54, rtoPerSlab: 48 },
-    { courierId: "161", name: "Shadowfax", freightPerSlab: 49, rtoPerSlab: 44 },
+    { courierId: "80", name: "DLVY Standard", serviceProvider: "teampafex", displayName: "Teampafex", freightPerSlab: 54, rtoPerSlab: 48 },
+    { courierId: "shadowfax:forward", name: "Shadowfax", serviceProvider: "shadowfax", displayName: "Shadowfax", freightPerSlab: 49, rtoPerSlab: 44 },
   ];
 
   return options.map((option, index) => {
@@ -234,8 +234,8 @@ function makeFallbackB2cRates(params: AvailableCouriersParams): AvailableCourier
     return {
       courierId: option.courierId,
       name: option.name,
-      serviceProvider: serviceKey(option.name),
-      serviceProviderDisplayName: "Teampafex",
+      serviceProvider: option.serviceProvider,
+      serviceProviderDisplayName: option.displayName,
       logo: null,
       mode: "surface",
       zone: { code: "TPX", name: "Teampafex Live Courier" },

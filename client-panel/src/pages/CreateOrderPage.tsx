@@ -253,6 +253,7 @@ export function CreateOrderPage() {
       discount: data.discount > 0 ? data.discount : undefined,
       courierId: selectedCourier.courierId,
       courierName: selectedCourier.name,
+      serviceProvider: selectedCourier.serviceProvider,
       pickupAddressId: data.pickupAddressId,
       preferredPickupDate: data.preferredPickupDate,
       preferredPickupTime: data.preferredPickupTime || undefined,

@@ -15,6 +15,11 @@ const TEAMPAFEX_EMAIL = process.env.TEAMPAFEX_EMAIL || "";
 const TEAMPAFEX_PASSWORD = process.env.TEAMPAFEX_PASSWORD || "";
 const TEAMPAFEX_API_TOKEN = process.env.TEAMPAFEX_API_TOKEN || "";
 const TEAMPAFEX_PROVIDER_ID = "sp-teampafex";
+const SHADOWFAX_BASE_URL = (process.env.SHADOWFAX_API_URL || "https://dale.shadowfax.in/api").replace(/\/+$/, "");
+const SHADOWFAX_API_TOKEN = process.env.SHADOWFAX_API_TOKEN || "";
+const SHADOWFAX_WEBHOOK_SECRET = process.env.SHADOWFAX_WEBHOOK_SECRET || "";
+const SHADOWFAX_PROVIDER_ID = "sp-shadowfax";
+const SHADOWFAX_FORWARD_COURIER_ID = "shadowfax:forward";
 const SEED_CREATED_AT = "2026-09-03T00:00:00.000Z";
 
 let cachedToken = TEAMPAFEX_API_TOKEN || null;
@@ -195,6 +200,14 @@ function defaultProviderCredentialValues() {
   };
 }
 
+function defaultShadowfaxCredentialValues() {
+  return {
+    baseUrl: SHADOWFAX_BASE_URL,
+    apiToken: SHADOWFAX_API_TOKEN,
+    webhookSecret: SHADOWFAX_WEBHOOK_SECRET,
+  };
+}
+
 function effectiveCredentialValues(data, type = "b2c") {
   const saved = data.providerCredentials?.[TEAMPAFEX_PROVIDER_ID];
   const values = saved?.[type]?.values || saved?.b2c?.values || {};
@@ -202,6 +215,16 @@ function effectiveCredentialValues(data, type = "b2c") {
     ...defaultProviderCredentialValues(),
     ...values,
     baseUrl: normalizeBaseUrl(values.baseUrl || TEAMPAFEX_BASE_URL),
+  };
+}
+
+function effectiveShadowfaxCredentialValues(data, type = "b2c") {
+  const saved = data.providerCredentials?.[SHADOWFAX_PROVIDER_ID];
+  const values = saved?.[type]?.values || saved?.b2c?.values || {};
+  return {
+    ...defaultShadowfaxCredentialValues(),
+    ...values,
+    baseUrl: normalizeBaseUrl(values.baseUrl || SHADOWFAX_BASE_URL),
   };
 }
 
@@ -290,6 +313,31 @@ async function providerRequest(method, url, data, type = "b2c", config = {}) {
         throw providerError(retryErr);
       }
     }
+    throw providerError(err);
+  }
+}
+
+async function shadowfaxRequest(method, url, data, type = "b2c", config = {}, overrideCredentials = null) {
+  const store = ensureProviderCredentialsSeed(readData());
+  const credentials = overrideCredentials || effectiveShadowfaxCredentialValues(store, type);
+  const baseUrl = normalizeBaseUrl(credentials.baseUrl);
+  const apiToken = credentials.apiToken || credentials.token || SHADOWFAX_API_TOKEN;
+  if (!apiToken) {
+    throw Object.assign(new Error("Shadowfax API token is required on the API server or in admin provider credentials."), { status: 500 });
+  }
+  try {
+    const res = await providerHttp(baseUrl).request({
+      method,
+      url,
+      data,
+      ...config,
+      headers: {
+        ...(config.headers || {}),
+        Authorization: `Token ${apiToken}`,
+      },
+    });
+    return res.data;
+  } catch (err) {
     throw providerError(err);
   }
 }
@@ -461,6 +509,14 @@ function credentialFields() {
   ];
 }
 
+function shadowfaxCredentialFields() {
+  return [
+    { key: "baseUrl", label: "Base URL", type: "text", required: true },
+    { key: "apiToken", label: "API Token", type: "password", required: true },
+    { key: "webhookSecret", label: "Webhook Secret", type: "password", required: false },
+  ];
+}
+
 function defaultProviderCredentials() {
   const fields = credentialFields();
   const values = defaultProviderCredentialValues();
@@ -473,6 +529,24 @@ function defaultProviderCredentials() {
     b2b: {
       fields,
       description: "Teampafex B2B login payload credentials",
+      values,
+      sameAsB2c: true,
+    },
+  };
+}
+
+function defaultShadowfaxProviderCredentials() {
+  const fields = shadowfaxCredentialFields();
+  const values = defaultShadowfaxCredentialValues();
+  return {
+    b2c: {
+      fields,
+      description: "Shadowfax forward warehouse API token credentials",
+      values,
+    },
+    b2b: {
+      fields,
+      description: "Shadowfax uses the same token credentials for this workspace",
       values,
       sameAsB2c: true,
     },
@@ -493,7 +567,9 @@ function mergeCredentialValues(current, incoming) {
 
 function ensureProviderCredentialsSeed(data) {
   const defaults = defaultProviderCredentials();
+  const shadowfaxDefaults = defaultShadowfaxProviderCredentials();
   const current = data.providerCredentials?.[TEAMPAFEX_PROVIDER_ID];
+  const currentShadowfax = data.providerCredentials?.[SHADOWFAX_PROVIDER_ID];
   data.providerCredentials = {
     ...(data.providerCredentials || {}),
     [TEAMPAFEX_PROVIDER_ID]: {
@@ -509,6 +585,19 @@ function ensureProviderCredentialsSeed(data) {
         sameAsB2c: current?.b2b?.sameAsB2c ?? true,
       },
     },
+    [SHADOWFAX_PROVIDER_ID]: {
+      b2c: {
+        ...shadowfaxDefaults.b2c,
+        ...currentShadowfax?.b2c,
+        values: { ...shadowfaxDefaults.b2c.values, ...currentShadowfax?.b2c?.values },
+      },
+      b2b: {
+        ...shadowfaxDefaults.b2b,
+        ...currentShadowfax?.b2b,
+        values: { ...shadowfaxDefaults.b2b.values, ...currentShadowfax?.b2b?.values },
+        sameAsB2c: currentShadowfax?.b2b?.sameAsB2c ?? true,
+      },
+    },
   };
   return data;
 }
@@ -516,9 +605,8 @@ function ensureProviderCredentialsSeed(data) {
 function redactedCredentials(credentials) {
   const redactBlock = (block) => {
     const values = { ...(block.values || {}) };
-    if (values.password) values.password = "********";
-    ["accessToken", "jwtToken", "token", "access_token"].forEach((key) => {
-      delete values[key];
+    Object.keys(values).forEach((key) => {
+      if (/(password|token|secret|key)/i.test(key) && values[key]) values[key] = "********";
     });
     return { ...block, values };
   };
@@ -529,7 +617,7 @@ function redactedCredentials(credentials) {
 }
 
 function hasUsableCredentials(values) {
-  return Boolean(values?.jwtToken || values?.accessToken || values?.token || (values?.email && values?.password));
+  return Boolean(values?.apiToken || values?.jwtToken || values?.accessToken || values?.token || (values?.email && values?.password));
 }
 
 function serviceProviderPayload(credentials) {
@@ -553,20 +641,43 @@ function serviceProviderPayload(credentials) {
   };
 }
 
+function shadowfaxServiceProviderPayload(credentials) {
+  const b2cConfigured = hasUsableCredentials(credentials.b2c.values);
+  return {
+    id: SHADOWFAX_PROVIDER_ID,
+    serviceProvider: "shadowfax",
+    displayName: "Shadowfax",
+    logoUrl: "",
+    totalCouriers: 1,
+    enabledCouriers: 1,
+    serviceProviderDisplayName: "Shadowfax",
+    isEnabled: true,
+    b2c: { configured: b2cConfigured },
+    b2b: { configured: b2cConfigured, sameAsB2c: true },
+    status: "active",
+    updatedAt: nowIso(),
+  };
+}
+
 function providerConfigStatus() {
   const data = ensureProviderCredentialsSeed(readData());
   const saved = data.providerCredentials[TEAMPAFEX_PROVIDER_ID];
+  const savedShadowfax = data.providerCredentials[SHADOWFAX_PROVIDER_ID];
   const b2c = effectiveCredentialValues(data, "b2c");
   const b2b = effectiveCredentialValues(data, "b2b");
+  const shadowfax = effectiveShadowfaxCredentialValues(data, "b2c");
   return {
     provider: "teampafex",
     providerBaseUrl: normalizeBaseUrl(b2c.baseUrl),
+    shadowfaxBaseUrl: normalizeBaseUrl(shadowfax.baseUrl),
     corsOrigin: process.env.CORS_ORIGIN || "*",
     clientDistServed: fs.existsSync(CLIENT_DIST_DIR),
     env: {
       hasTeampafexEmail: Boolean(TEAMPAFEX_EMAIL),
       hasTeampafexPassword: Boolean(TEAMPAFEX_PASSWORD),
       hasTeampafexApiToken: Boolean(TEAMPAFEX_API_TOKEN),
+      hasShadowfaxApiToken: Boolean(SHADOWFAX_API_TOKEN),
+      hasShadowfaxWebhookSecret: Boolean(SHADOWFAX_WEBHOOK_SECRET),
     },
     savedCredentials: {
       b2c: {
@@ -583,6 +694,11 @@ function providerConfigStatus() {
         hasPassword: Boolean(b2b.password),
         hasJwtToken: Boolean(b2b.jwtToken),
         hasAccessToken: Boolean(b2b.accessToken || b2b.token),
+      },
+      shadowfax: {
+        configured: hasUsableCredentials(savedShadowfax.b2c.values),
+        hasApiToken: Boolean(shadowfax.apiToken || shadowfax.token),
+        hasWebhookSecret: Boolean(shadowfax.webhookSecret),
       },
     },
     cachedJwtLoaded: Boolean(cachedToken),
@@ -615,6 +731,32 @@ async function updateStoredProviderCredentials(type, credentials) {
   cachedTokenKey = `${login.baseUrl}|${values.email || "token"}|provided`;
   writeData(data);
   return data.providerCredentials[TEAMPAFEX_PROVIDER_ID];
+}
+
+async function updateStoredShadowfaxCredentials(type, credentials) {
+  const data = ensureProviderCredentialsSeed(readData());
+  const current = data.providerCredentials[SHADOWFAX_PROVIDER_ID];
+  const block = current[type] || current.b2c;
+  const values = mergeCredentialValues(block.values, credentials);
+  if (!values.apiToken && !values.token) {
+    throw Object.assign(new Error("Shadowfax API token is required."), { status: 400 });
+  }
+  data.providerCredentials[SHADOWFAX_PROVIDER_ID] = {
+    ...current,
+    [type]: {
+      ...block,
+      values,
+    },
+  };
+  if (type === "b2c" && current.b2b?.sameAsB2c) {
+    data.providerCredentials[SHADOWFAX_PROVIDER_ID].b2b = {
+      ...current.b2b,
+      values,
+      sameAsB2c: true,
+    };
+  }
+  writeData(data);
+  return data.providerCredentials[SHADOWFAX_PROVIDER_ID];
 }
 
 function ensurePickupSeed(data) {
@@ -804,6 +946,195 @@ function providerCreatePayload(order, providerAddressIds, deliveryPartnerId = or
     courier_id: /^\d+$/.test(String(deliveryPartnerId)) ? Number(deliveryPartnerId) : deliveryPartnerId,
     delivery_patner_id: /^\d+$/.test(String(deliveryPartnerId)) ? Number(deliveryPartnerId) : deliveryPartnerId,
   };
+}
+
+function pincodeValue(value) {
+  const text = String(value || "").trim();
+  return /^\d{6}$/.test(text) ? Number(text) : text;
+}
+
+function addressLine(address = {}) {
+  return [address.addressLine1, address.addressLine2].filter(Boolean).join(", ").trim();
+}
+
+function localPickupAddress(pickupAddressId) {
+  const data = ensurePickupSeed(readData());
+  const address = (data.pickupAddresses || []).find((item) =>
+    String(item.id) === String(pickupAddressId) ||
+    String(item.providerPickupAddressId || "") === String(pickupAddressId)
+  );
+  if (!address) throw Object.assign(new Error("Pickup address not found for Shadowfax shipment"), { status: 400 });
+  return address;
+}
+
+function localRtoAddress(address) {
+  if (address?.isSameAsRto === false && address.rtoAddress) {
+    return {
+      ...address.rtoAddress,
+      nickname: address.rtoAddress.nickname || `${address.nickname || "Pickup"} RTO`,
+      contactName: address.rtoAddress.contactName || address.contactName,
+      phone: address.rtoAddress.phone || address.phone,
+      email: address.rtoAddress.email || address.email,
+      addressLine2: address.rtoAddress.addressLine2 || "",
+    };
+  }
+  return address;
+}
+
+function shadowfaxAddressDetails(address, fallbackName = "Warehouse") {
+  return {
+    name: address.contactName || address.nickname || fallbackName,
+    contact: String(address.phone || ""),
+    address_line_1: String(address.addressLine1 || addressLine(address) || ""),
+    address_line_2: String(address.addressLine2 || ""),
+    city: String(address.city || ""),
+    state: String(address.state || ""),
+    pincode: pincodeValue(address.pincode),
+    latitude: address.latitude ? String(address.latitude) : "",
+    longitude: address.longitude ? String(address.longitude) : "",
+    unique_code: String(address.providerShadowfaxUniqueCode || address.uniqueCode || address.id || "").slice(0, 255),
+  };
+}
+
+function productTaxDetails(product = {}) {
+  const total = round(toNumber(product.unitPrice) * toNumber(product.quantity || 1), 2);
+  const taxRate = toNumber(product.taxRate);
+  const totalTax = taxRate > 0 ? round((total * taxRate) / 100, 2) : 0;
+  return {
+    cgst: 0,
+    sgst: 0,
+    igst: totalTax,
+    total_tax: totalTax,
+  };
+}
+
+function shadowfaxProducts(order) {
+  const seller = defaultSeller();
+  const invoice = order.invoices?.[0];
+  const products = Array.isArray(order.products) && order.products.length
+    ? order.products
+    : [{ name: order.orderId, unitPrice: order.orderAmount, quantity: 1, hsn: "" }];
+  return products.map((product, index) => ({
+    hsn_code: product.hsn || "",
+    invoice_no: invoice?.invoiceNumber || order.orderId,
+    sku_name: String(product.name || order.orderId).slice(0, 200),
+    sku_id: String(product.sku || product.hsn || `${order.orderId}-${index + 1}`).slice(0, 100),
+    category: product.category || "General",
+    price: round(toNumber(product.unitPrice || order.orderAmount), 2),
+    seller_details: {
+      seller_name: order.companyName || seller.businessName || seller.name,
+      seller_address: seller.address || "",
+      seller_state: seller.state || "",
+      gstin_number: order.companyGst || "",
+    },
+    taxes: productTaxDetails(product),
+    additional_details: {
+      requires_extra_care: "False",
+      type_extra_care: "",
+      quantity: Math.max(1, Math.floor(toNumber(product.quantity, 1))),
+    },
+  }));
+}
+
+function shadowfaxForwardPayload(order, pickupAddress) {
+  if (String(order.orderType || "B2C").toUpperCase() === "B2B") {
+    throw Object.assign(new Error("Shadowfax direct booking currently supports B2C forward shipments from this order form."), { status: 400 });
+  }
+  const rtoAddress = localRtoAddress(pickupAddress);
+  const products = shadowfaxProducts(order);
+  const productValue = products.reduce((sum, product) => sum + toNumber(product.price) * toNumber(product.additional_details?.quantity, 1), 0);
+  const invoice = order.invoices?.[0];
+  return {
+    order_type: "warehouse",
+    order_details: {
+      client_order_id: String(order.orderId).slice(0, 100),
+      actual_weight: Math.ceil(toNumber(order.weight)),
+      volumetric_weight: Math.ceil(volumetricKg(order.length, order.breadth, order.height) * 1000),
+      product_value: round(productValue || order.orderAmount, 2),
+      payment_mode: order.paymentType === "cod" ? "COD" : "Prepaid",
+      cod_amount: order.paymentType === "cod" ? round(toNumber(order.codAmount), 2) : 0,
+      promised_delivery_date: order.preferredDeliveryDate || null,
+      total_amount: round(toNumber(order.orderAmount), 2),
+      eway_bill: invoice?.ebn || "",
+      gstin_number: order.companyGst || "",
+      order_service: "regular",
+    },
+    customer_details: {
+      name: String(order.buyerName || "").slice(0, 100),
+      contact: String(order.buyerPhone || "").slice(0, 13),
+      address_line_1: String(order.address || ""),
+      address_line_2: String(order.address2 || ""),
+      city: String(order.city || "").slice(0, 50),
+      state: String(order.state || "").slice(0, 50),
+      pincode: pincodeValue(order.pincode),
+      alternate_contact: "",
+      latitude: "",
+      longitude: "",
+      location_type: "residential",
+    },
+    pickup_details: shadowfaxAddressDetails(pickupAddress, "Pickup"),
+    rto_details: shadowfaxAddressDetails(rtoAddress, "RTO"),
+    product_details: products,
+  };
+}
+
+async function assertShadowfaxPincodeServiceable(pincode, service, label) {
+  const code = String(pincode || "").trim();
+  if (!/^\d{6}$/.test(code)) {
+    throw Object.assign(new Error(`${label} pincode must be a valid 6 digit pincode for Shadowfax.`), { status: 400 });
+  }
+  const result = await shadowfaxRequest(
+    "get",
+    `/v1/clients/serviceability/?service=${encodeURIComponent(service)}&page=1&count=10&pincodes=${encodeURIComponent(code)}`,
+    undefined,
+    "b2c",
+  );
+  if (!Array.isArray(result) || !result.some((item) => String(item.code) === code)) {
+    throw Object.assign(new Error(`${label} pincode ${code} is not serviceable by Shadowfax for ${service}.`), { status: 400 });
+  }
+}
+
+function shadowfaxSucceeded(result = {}) {
+  const message = String(result.message || result.responseMsg || "").toLowerCase();
+  return message === "success" || result.status === "SUCCESS" || result.status === true || result.responseCode === 200;
+}
+
+function shadowfaxData(result = {}) {
+  return result.data || result.order_details || result;
+}
+
+function shadowfaxOrderId(result = {}) {
+  const data = shadowfaxData(result);
+  return String(data.id ?? data.client_order_id ?? result.client_request_id ?? result.client_order_number ?? "");
+}
+
+function shadowfaxAwb(result = {}) {
+  const data = shadowfaxData(result);
+  return String(data.awb_number ?? result.awb_number ?? result.client_request_id ?? "");
+}
+
+function isShadowfaxCourierSelection(payload = {}) {
+  const values = [
+    payload.serviceProvider,
+    payload.rate?.serviceProvider,
+    payload.courierName,
+    payload.courierId,
+  ].map((value) => String(value || "").toLowerCase());
+  return values.some((value) => value.includes("shadowfax")) || String(payload.courierId || "") === "161";
+}
+
+async function createShadowfaxOrder(order) {
+  const pickupAddress = localPickupAddress(order.pickupAddressId);
+  const payload = shadowfaxForwardPayload(order, pickupAddress);
+  const rtoAddress = localRtoAddress(pickupAddress);
+  await assertShadowfaxPincodeServiceable(pickupAddress.pincode, "warehouse_pickup", "Pickup");
+  await assertShadowfaxPincodeServiceable(order.pincode, "customer_delivery", "Delivery");
+  await assertShadowfaxPincodeServiceable(rtoAddress.pincode, "warehouse_return", "RTO");
+  const result = await shadowfaxRequest("post", "/v3/clients/orders/", payload, "b2c");
+  if (!shadowfaxSucceeded(result)) {
+    throw Object.assign(new Error(messageFromProviderData(result) || "Shadowfax order creation failed"), { status: 400, providerData: result });
+  }
+  return { result, pickupAddressId: pickupAddress.id };
 }
 
 function providerOrderId(result = {}) {
@@ -1002,13 +1333,17 @@ function courierName(courierId) {
   if (id === "80") return "DLVY Standard";
   if (id === "152") return "Delhivery B2B";
   if (id === "161") return "Shadowfax";
+  if (String(courierId || "").includes("shadowfax")) return "Shadowfax";
   return String(courierId || "Teampafex");
 }
 
-function orderFromPayload(payload, providerResult, providerPickupAddressId) {
+function orderFromPayload(payload, providerResult, providerPickupAddressId, meta = {}) {
   const now = nowIso();
-  const idFromProvider = providerOrderId(providerResult) || `provider-${Date.now()}`;
-  const awb = providerAwb(providerResult);
+  const provider = meta.serviceProvider || "teampafex";
+  const idFromProvider = provider === "shadowfax"
+    ? shadowfaxOrderId(providerResult) || `shadowfax-${Date.now()}`
+    : providerOrderId(providerResult) || `provider-${Date.now()}`;
+  const awb = provider === "shadowfax" ? shadowfaxAwb(providerResult) : providerAwb(providerResult);
   return {
     id: idFromProvider,
     userId: "demo-client-user",
@@ -1017,8 +1352,8 @@ function orderFromPayload(payload, providerResult, providerPickupAddressId) {
     paymentType: payload.paymentType,
     status: awb ? "booked" : "processing",
     courierId: String(payload.courierId),
-    serviceProvider: "teampafex",
-    courierName: courierName(payload.courierId),
+    serviceProvider: provider,
+    courierName: meta.courierName || payload.courierName || courierName(payload.courierId),
     awb,
     providerOrderId: idFromProvider,
     pickupAddressId: providerPickupAddressId,
@@ -1099,14 +1434,17 @@ function mapProviderStatus(status = "") {
   const value = String(status || "").toLowerCase().replace(/[\s-]+/g, "_");
   if (value.includes("cancel")) return "cancelled";
   if (value.includes("lost")) return "lost";
-  if (value.includes("rto") && value.includes("delivered")) return "rto_delivered";
-  if (value.includes("rto")) return "rto_in_transit";
+  if (["rts_d", "rto_d", "returned_to_client", "returned_to_seller"].includes(value)) return "rto_delivered";
+  if (["rts", "rto"].includes(value)) return "rto_initiated";
+  if (value.includes("rts") || value.includes("rto") || value.includes("in_transit_return")) return "rto_in_transit";
   if (value.includes("ndr")) return "ndr";
-  if (value.includes("out_for_delivery") || value.includes("ofd")) return "out_for_delivery";
+  if (["cid", "nc", "na", "reopen_ndr", "not_contactable", "not_attempted"].includes(value)) return "ndr";
+  if (value.includes("out_for_delivery") || value === "ofd" || value.includes("assigned_for_delivery")) return "out_for_delivery";
   if (value.includes("delivered") || value.includes("completed")) return "delivered";
-  if (value.includes("transit") || value.includes("picked")) return "in_transit";
-  if (value.includes("ship")) return "shipped";
+  if (value.includes("transit") || value.includes("picked") || value.includes("received") || value.includes("recd_at")) return "in_transit";
+  if (value.includes("ship") || value.includes("manifest") || value.includes("bag_")) return "shipped";
   if (value.includes("manifest") || value.includes("book")) return "booked";
+  if (value.includes("pickup") || value.includes("warehouse")) return "pickup_initiated";
   if (value.includes("process")) return "processing";
   if (value.includes("pending") || value.includes("new")) return "created";
   return "";
@@ -1210,6 +1548,68 @@ function providerOrderToLocalOrder(providerOrder) {
   };
 }
 
+async function shadowfaxTracking(order) {
+  const awb = order.awb || order.providerAwb || order.providerOrderId || order.orderId;
+  if (!awb) return { events: [], raw: null };
+  const raw = await shadowfaxRequest("get", `/v4/clients/orders/${encodeURIComponent(awb)}/track/`, undefined, "b2c");
+  const events = (raw.tracking_details || []).map((event, index) => ({
+    id: `${awb}-${event.status_id || event.status || index}-${event.created || index}`,
+    orderId: order.id,
+    awb: String(event.awb_number || awb),
+    statusCode: mapProviderStatus(event.status_id || event.status) || "processing",
+    statusText: String(event.status || event.status_id || ""),
+    location: event.location || "",
+    remarks: event.remarks || "",
+    source: "shadowfax",
+    eventTimestamp: event.created || undefined,
+    createdAt: event.created || nowIso(),
+  }));
+  return { events, raw };
+}
+
+function mergeShadowfaxTracking(order, tracking) {
+  const details = tracking.raw?.order_details || {};
+  const latest = [...(tracking.events || [])].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).at(-1);
+  const status = mapProviderStatus(details.status || details.status_display || latest?.statusText || latest?.statusCode) || order.status;
+  return {
+    ...order,
+    status,
+    awb: String(details.awb_number || order.awb || latest?.awb || ""),
+    providerOrderId: String(details.id || details.client_order_id || order.providerOrderId || order.id),
+    trackingUrl: details.customer_track_url || order.trackingUrl,
+    deliveredAt: status === "delivered" ? order.deliveredAt || nowIso() : order.deliveredAt,
+    cancelledAt: status === "cancelled" ? order.cancelledAt || nowIso() : order.cancelledAt,
+    updatedAt: status !== order.status || details.awb_number ? nowIso() : order.updatedAt,
+  };
+}
+
+async function syncShadowfaxOrders() {
+  const data = readData();
+  const localOrders = Array.isArray(data.orders) ? data.orders : [];
+  const shadowfaxOrders = localOrders.filter((order) => order.serviceProvider === "shadowfax" && order.awb);
+  if (!shadowfaxOrders.length) return localOrders;
+  if (!hasUsableCredentials(ensureProviderCredentialsSeed(readData()).providerCredentials[SHADOWFAX_PROVIDER_ID].b2c.values)) return localOrders;
+
+  let changed = false;
+  const synced = [];
+  for (const order of localOrders) {
+    if (order.serviceProvider !== "shadowfax" || !order.awb) {
+      synced.push(order);
+      continue;
+    }
+    try {
+      const tracking = await shadowfaxTracking(order);
+      const next = mergeShadowfaxTracking(order, tracking);
+      if (JSON.stringify(next) !== JSON.stringify(order)) changed = true;
+      synced.push(next);
+    } catch {
+      synced.push(order);
+    }
+  }
+  if (changed) writeData({ ...data, orders: synced });
+  return synced;
+}
+
 async function syncOrdersWithProvider(orderType = "B2C") {
   const data = readData();
   const localOrders = Array.isArray(data.orders) ? data.orders : [];
@@ -1236,6 +1636,7 @@ async function syncOrdersWithProvider(orderType = "B2C") {
 
 async function currentOrders() {
   await syncOrdersWithProvider("B2C").catch(() => null);
+  await syncShadowfaxOrders().catch(() => null);
   return readData().orders || [];
 }
 
@@ -1620,16 +2021,20 @@ async function adminCouriersResponse(query = {}) {
 
 function defaultCourierRef(courierId) {
   const id = String(courierId || "").split(":").pop();
+  if (String(courierId || "").startsWith("shadowfax:") || id === "forward") {
+    return { id: SHADOWFAX_FORWARD_COURIER_ID, name: "Shadowfax", serviceProvider: "shadowfax" };
+  }
   if (id === "80") return { id: "teampafex:80", name: "DLVY Standard", serviceProvider: "teampafex" };
   if (id === "152") return { id: "teampafex:152", name: "Delhivery B2B", serviceProvider: "teampafex" };
-  if (id === "161") return { id: "teampafex:161", name: "Shadowfax", serviceProvider: "teampafex" };
+  if (id === "161") return { id: SHADOWFAX_FORWARD_COURIER_ID, name: "Shadowfax", serviceProvider: "shadowfax" };
   return { id: String(courierId || ""), name: courierName(courierId), serviceProvider: "teampafex" };
 }
 
 function makeSeedB2cPricing(courierId, courierNameValue, mode, zoneRates) {
+  const courier = defaultCourierRef(courierId);
   return {
     id: `seed-b2c-pricing-${courierId.replace(/[^a-z0-9]+/gi, "-")}`,
-    courier: { id: courierId, name: courierNameValue, serviceProvider: "teampafex" },
+    courier: { ...courier, name: courierNameValue },
     plan: "basic",
     mode,
     otherCharges: 0,
@@ -1660,7 +2065,7 @@ function defaultB2cPricingRows() {
       [72, 58, 45, 2],
       [95, 75, 45, 2],
     ]),
-    makeSeedB2cPricing("teampafex:161", "Shadowfax", "surface", [
+    makeSeedB2cPricing(SHADOWFAX_FORWARD_COURIER_ID, "Shadowfax", "surface", [
       [34, 28, 40, 2],
       [42, 34, 40, 2],
       [54, 44, 40, 2],
@@ -1679,18 +2084,37 @@ function ensureB2cPricingSeed(data = readData()) {
   if (!Array.isArray(data.b2cPricing) || data.b2cPricing.length === 0) {
     data.b2cPricing = defaultB2cPricingRows();
     changed = true;
+  } else {
+    data.b2cPricing = data.b2cPricing.map((pricing) => {
+      const courierNameValue = String(pricing.courier?.name || "").toLowerCase();
+      const courierId = String(pricing.courier?.id || "");
+      if (courierNameValue.includes("shadowfax") || courierId === "teampafex:161" || courierId === "161") {
+        if (courierId !== SHADOWFAX_FORWARD_COURIER_ID || pricing.courier?.serviceProvider !== "shadowfax") changed = true;
+        return {
+          ...pricing,
+          courier: { ...(pricing.courier || {}), id: SHADOWFAX_FORWARD_COURIER_ID, name: "Shadowfax", serviceProvider: "shadowfax" },
+        };
+      }
+      return pricing;
+    });
+    if (!data.b2cPricing.some((pricing) => String(pricing.courier?.id) === SHADOWFAX_FORWARD_COURIER_ID)) {
+      data.b2cPricing = [...data.b2cPricing, defaultB2cPricingRows()[1]];
+      changed = true;
+    }
   }
   return changed ? writeData(data) : data;
 }
 
 function normalizeCourierId(value) {
   const raw = String(value || "");
+  if (raw.startsWith("shadowfax:")) return SHADOWFAX_FORWARD_COURIER_ID;
   const id = raw.split(":").pop();
   return id ? `teampafex:${id}` : raw;
 }
 
 function providerCourierId(value) {
-  return String(value || "").split(":").pop();
+  const raw = String(value || "");
+  return raw.startsWith("shadowfax:") ? raw : raw.split(":").pop();
 }
 
 function populatedZoneRate(zoneRate, zones) {
@@ -1776,7 +2200,7 @@ function b2cRatesFromAdminPricing(params) {
       courierId: providerCourierId(pricing.courier?.id),
       name: pricing.courier?.name || courierName(pricing.courier?.id),
       serviceProvider: pricing.courier?.serviceProvider || "teampafex",
-      serviceProviderDisplayName: "Teampafex",
+      serviceProviderDisplayName: pricing.courier?.serviceProvider === "shadowfax" ? "Shadowfax" : "Teampafex",
       logo: null,
       mode: pricing.mode || "surface",
       zone: { code: zoneRate.zone?.code || zoneCode, name: zoneRate.zone?.name || "National" },
@@ -1860,6 +2284,17 @@ function listB2cPricingResponse(query = {}) {
 }
 
 async function cancelProviderOrder(order, reason = "") {
+  if (order.serviceProvider === "shadowfax") {
+    const result = await shadowfaxRequest("post", "/v3/clients/orders/cancel/", {
+      request_id: String(order.awb || order.orderId || order.providerOrderId),
+      cancel_remarks: reason || "Cancelled by Client",
+    }, "b2c");
+    const code = Number(result.responseCode);
+    if (![200, 304].includes(code) && !String(result.responseMsg || result.message || "").toLowerCase().includes("cancel")) {
+      throw Object.assign(new Error(messageFromProviderData(result) || "Shadowfax cancel failed"), { status: 400, providerData: result });
+    }
+    return result;
+  }
   if (!order.providerOrderId && !order.id) return null;
   const body = new URLSearchParams({
     order_id: String(order.providerOrderId || order.id),
@@ -2007,8 +2442,8 @@ function fallbackB2cRates(params) {
   const chargeableKg = b2cChargeableKg(params.weight, params.length, params.breadth, params.height);
   const slabs = Math.max(1, Math.ceil(chargeableKg / 0.5));
   const options = [
-    { courierId: "80", name: "DLVY Standard", freightPerSlab: 54, rtoPerSlab: 48 },
-    { courierId: "161", name: "Shadowfax", freightPerSlab: 49, rtoPerSlab: 44 },
+    { courierId: "80", name: "DLVY Standard", serviceProvider: "teampafex", displayName: "Teampafex", freightPerSlab: 54, rtoPerSlab: 48 },
+    { courierId: SHADOWFAX_FORWARD_COURIER_ID, name: "Shadowfax", serviceProvider: "shadowfax", displayName: "Shadowfax", freightPerSlab: 49, rtoPerSlab: 44 },
   ];
   return options.map((option, index) => {
     const freight = round(option.freightPerSlab * slabs);
@@ -2017,8 +2452,8 @@ function fallbackB2cRates(params) {
     return {
       courierId: option.courierId,
       name: option.name,
-      serviceProvider: option.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""),
-      serviceProviderDisplayName: "Teampafex",
+      serviceProvider: option.serviceProvider,
+      serviceProviderDisplayName: option.displayName,
       logo: null,
       mode: "surface",
       zone: { code: "TPX", name: "Teampafex" },
@@ -2098,16 +2533,17 @@ function fallbackB2bRates(params) {
 
 function mapProviderRate(rate, index, params, orderType, partners = []) {
   const name = String(rate.delivery_partner_name || rate.name || courierName(rate.delivery_partner_id || rate.courier_id || rate.id) || `Courier ${index + 1}`);
+  const isShadowfax = normalizeCourierName(name).includes("shadowfax") || String(rate.delivery_partner_id ?? rate.courier_id ?? rate.id ?? "") === "161";
   const partnerId = matchingPartnerId(partners, name);
   const freight = toNumber(rate.total_freight ?? rate.freight);
   const gst = toNumber(rate.gst);
   const cod = toNumber(rate.cod_charges);
   const total = toNumber(rate.total_charges ?? rate.total, freight + gst + cod);
   return {
-    courierId: String(rate.delivery_partner_id ?? partnerId ?? rate.courier_id ?? rate.id ?? index + 1),
+    courierId: isShadowfax ? SHADOWFAX_FORWARD_COURIER_ID : String(rate.delivery_partner_id ?? partnerId ?? rate.courier_id ?? rate.id ?? index + 1),
     name,
-    serviceProvider: name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""),
-    serviceProviderDisplayName: "Teampafex",
+    serviceProvider: isShadowfax ? "shadowfax" : name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""),
+    serviceProviderDisplayName: isShadowfax ? "Shadowfax" : "Teampafex",
     logo: null,
     mode: "surface",
     zone: { code: "TPX", name: orderType === "B2B" ? `${params.origin}->${params.destination}` : "Teampafex" },
@@ -2242,6 +2678,18 @@ app.get("/api/health/provider/orders", async (_req, res) => {
   }
 });
 
+app.get("/api/health/shadowfax", (_req, res) => {
+  const data = ensureProviderCredentialsSeed(readData());
+  const credentials = effectiveShadowfaxCredentialValues(data, "b2c");
+  res.json({
+    ok: true,
+    provider: "shadowfax",
+    configured: Boolean(credentials.apiToken || credentials.token),
+    baseUrl: normalizeBaseUrl(credentials.baseUrl),
+    webhookConfigured: Boolean(credentials.webhookSecret),
+  });
+});
+
 app.get("/api/kyc", (_req, res) => {
   res.json({ success: true, kyc: ensureKycSeed(readData()).kyc });
 });
@@ -2319,6 +2767,18 @@ app.post("/api/rates/b2b/available", async (req, res) => {
 
 app.post("/api/orders", async (req, res, next) => {
   try {
+    if (isShadowfaxCourierSelection(req.body)) {
+      const { result, pickupAddressId } = await createShadowfaxOrder(req.body);
+      const order = orderFromPayload(req.body, result, pickupAddressId, {
+        serviceProvider: "shadowfax",
+        courierName: "Shadowfax",
+      });
+      const data = readData();
+      data.orders = [order, ...data.orders.filter((item) => item.id !== order.id)];
+      writeData(data);
+      return res.json({ order });
+    }
+
     const providerAddressIds = await resolveProviderAddressIds(req.body.pickupAddressId, req.body.orderType);
     const deliveryPartnerId = await resolveDeliveryPartnerId(req.body.courierId, req.body.courierName, req.body.orderType);
     await assertBookableB2cCourier(req.body, deliveryPartnerId);
@@ -2385,6 +2845,40 @@ app.post("/api/orders/:id/cancel", async (req, res, next) => {
     data.orders = [updated, ...(data.orders || []).filter((item) => item.id !== order.id)];
     writeData(data);
     return res.json({ order: updated });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+app.get("/api/orders/:id/tracking", async (req, res, next) => {
+  try {
+    const data = readData();
+    const order = (data.orders || []).find((item) => item.id === req.params.id || item.orderId === req.params.id || item.providerOrderId === req.params.id || item.awb === req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.serviceProvider === "shadowfax") {
+      const tracking = await shadowfaxTracking(order);
+      const updated = mergeShadowfaxTracking(order, tracking);
+      data.orders = [updated, ...(data.orders || []).filter((item) => item.id !== order.id)];
+      data.trackingEvents = [
+        ...(tracking.events || []),
+        ...(data.trackingEvents || []).filter((event) => String(event.orderId) !== String(order.id) && String(event.awb) !== String(order.awb)),
+      ];
+      writeData(data);
+      return res.json(tracking.events);
+    }
+    const savedEvents = (data.trackingEvents || []).filter((event) => (
+      String(event.orderId) === String(order.id) || String(event.awb) === String(order.awb)
+    ));
+    if (savedEvents.length) return res.json(savedEvents);
+    return res.json([{
+      id: `${order.id}-created`,
+      orderId: order.id,
+      awb: order.awb || "",
+      statusCode: order.status,
+      statusText: order.status,
+      source: order.serviceProvider || "logicorp",
+      createdAt: order.updatedAt || order.createdAt || nowIso(),
+    }]);
   } catch (err) {
     return next(err);
   }
@@ -2597,6 +3091,75 @@ app.get("/api/admin/orders/:id", (req, res) => {
   return res.json({ order });
 });
 
+app.get("/api/admin/orders/:id/tracking", async (req, res, next) => {
+  try {
+    const data = readData();
+    const order = (data.orders || []).find((item) => item.id === req.params.id || item.orderId === req.params.id || item.providerOrderId === req.params.id || item.awb === req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.serviceProvider === "shadowfax") {
+      const tracking = await shadowfaxTracking(order);
+      return res.json(tracking.events);
+    }
+    return res.json((data.trackingEvents || []).filter((event) => String(event.orderId) === String(order.id) || String(event.awb) === String(order.awb)));
+  } catch (err) {
+    return next(err);
+  }
+});
+
+app.post("/api/webhooks/shadowfax", (req, res) => {
+  const data = ensureProviderCredentialsSeed(readData());
+  const secret = effectiveShadowfaxCredentialValues(data, "b2c").webhookSecret;
+  if (secret) {
+    const supplied = String(req.get("authorization") || req.get("x-webhook-secret") || "").replace(/^Token\s+/i, "").trim();
+    if (supplied !== secret) return res.status(401).json({ ok: false, error: "Invalid webhook secret" });
+  }
+
+  const payload = req.body || {};
+  const awb = String(payload.awb_number || payload.awb || "");
+  const clientOrderId = String(payload.order_id || payload.client_order_id || "");
+  const order = (data.orders || []).find((item) =>
+    (awb && String(item.awb || "") === awb) ||
+    (clientOrderId && String(item.orderId || "") === clientOrderId) ||
+    (clientOrderId && String(item.providerOrderId || "") === clientOrderId)
+  );
+  const event = {
+    id: `shadowfax-${awb || clientOrderId || Date.now()}-${payload.event || payload.status || Date.now()}`,
+    orderId: order?.id || clientOrderId,
+    awb,
+    statusCode: mapProviderStatus(payload.event || payload.status) || "processing",
+    statusText: String(payload.status || payload.event || ""),
+    location: payload.current_location || "",
+    remarks: payload.comments || "",
+    source: "shadowfax",
+    eventTimestamp: payload.event_timestamp || undefined,
+    createdAt: payload.event_timestamp || nowIso(),
+    riderName: payload.rider_name || undefined,
+    riderContact: payload.rider_contact || undefined,
+    raw: payload,
+  };
+
+  data.trackingEvents = [
+    event,
+    ...(data.trackingEvents || []).filter((item) => item.id !== event.id),
+  ].slice(0, 1000);
+
+  if (order) {
+    const nextStatus = mapProviderStatus(payload.event || payload.status) || order.status;
+    const updated = {
+      ...order,
+      awb: awb || order.awb,
+      status: nextStatus,
+      deliveredAt: nextStatus === "delivered" ? order.deliveredAt || nowIso() : order.deliveredAt,
+      cancelledAt: nextStatus === "cancelled" ? order.cancelledAt || nowIso() : order.cancelledAt,
+      updatedAt: nowIso(),
+    };
+    data.orders = [updated, ...(data.orders || []).filter((item) => item.id !== order.id)];
+  }
+
+  writeData(data);
+  return res.json({ ok: true });
+});
+
 app.get("/api/admin/wallets", (req, res) => {
   const wallet = walletForUser(defaultSeller().id);
   const wallets = req.query.search
@@ -2685,12 +3248,25 @@ app.get("/api/admin/users/:userId/pickup-addresses", (_req, res) => {
 
 app.get("/api/admin/couriers", async (req, res) => {
   try {
-    res.json(await adminCouriersResponse(req.query));
+    const response = await adminCouriersResponse(req.query);
+    const hasShadowfax = response.couriers.some((courier) => courier.serviceProvider === "shadowfax");
+    const shadowfaxCourier = { id: SHADOWFAX_FORWARD_COURIER_ID, name: "Shadowfax", serviceProvider: "shadowfax", serviceProviderDisplayName: "Shadowfax", courierType: "delivery", businessType: ["b2c"], isEnabled: true, logo: null, createdAt: "", updatedAt: "" };
+    const canIncludeShadowfax =
+      !hasShadowfax &&
+      (!req.query.businessType || String(req.query.businessType).toLowerCase() === "b2c") &&
+      (!req.query.serviceProvider || req.query.serviceProvider === "shadowfax");
+    const couriers = canIncludeShadowfax ? [...response.couriers, shadowfaxCourier] : response.couriers;
+    return res.json({
+      ...response,
+      couriers,
+      pagination: { ...response.pagination, total: couriers.length, totalPages: Math.max(1, Math.ceil(couriers.length / Number(req.query.limit || 50))) },
+      stats: { ...response.stats, total: couriers.length, enabled: couriers.length, delivery: couriers.length },
+    });
   } catch {
     const couriers = [
       { id: "teampafex:80", name: "DLVY Standard", serviceProvider: "teampafex", serviceProviderDisplayName: "Teampafex", courierType: "delivery", businessType: ["b2c"], isEnabled: true, logo: null, createdAt: "", updatedAt: "" },
       { id: "teampafex:152", name: "Delhivery B2B", serviceProvider: "teampafex", serviceProviderDisplayName: "Teampafex", courierType: "delivery", businessType: ["b2b"], isEnabled: true, logo: null, createdAt: "", updatedAt: "" },
-      { id: "teampafex:161", name: "Shadowfax", serviceProvider: "teampafex", serviceProviderDisplayName: "Teampafex", courierType: "delivery", businessType: ["b2c"], isEnabled: true, logo: null, createdAt: "", updatedAt: "" },
+      { id: SHADOWFAX_FORWARD_COURIER_ID, name: "Shadowfax", serviceProvider: "shadowfax", serviceProviderDisplayName: "Shadowfax", courierType: "delivery", businessType: ["b2c"], isEnabled: true, logo: null, createdAt: "", updatedAt: "" },
     ];
     res.json({
       couriers,
@@ -2701,32 +3277,45 @@ app.get("/api/admin/couriers", async (req, res) => {
 });
 
 app.get("/api/admin/service-providers", (_req, res) => {
-  const credentials = ensureProviderCredentialsSeed(readData()).providerCredentials[TEAMPAFEX_PROVIDER_ID];
-  const provider = serviceProviderPayload(credentials);
+  const data = ensureProviderCredentialsSeed(readData());
+  const provider = serviceProviderPayload(data.providerCredentials[TEAMPAFEX_PROVIDER_ID]);
+  const shadowfaxProvider = shadowfaxServiceProviderPayload(data.providerCredentials[SHADOWFAX_PROVIDER_ID]);
+  const providers = [provider, shadowfaxProvider];
   res.json({
-    providers: [provider],
-    stats: { total: 1, active: 1, b2cConfigured: provider.b2c.configured ? 1 : 0 },
-    pagination: { page: 1, limit: 50, total: 1, totalPages: 1 },
+    providers,
+    stats: {
+      total: providers.length,
+      active: providers.filter((item) => item.status === "active").length,
+      b2cConfigured: providers.filter((item) => item.b2c.configured).length,
+    },
+    pagination: { page: 1, limit: 50, total: providers.length, totalPages: 1 },
   });
 });
 
 app.get("/api/admin/service-providers/:id", (req, res) => {
-  if (req.params.id !== TEAMPAFEX_PROVIDER_ID) return res.status(404).json({ error: "Service provider not found" });
-  const credentials = ensureProviderCredentialsSeed(readData()).providerCredentials[TEAMPAFEX_PROVIDER_ID];
-  res.json({ provider: serviceProviderPayload(credentials) });
+  const data = ensureProviderCredentialsSeed(readData());
+  if (req.params.id === TEAMPAFEX_PROVIDER_ID) {
+    return res.json({ provider: serviceProviderPayload(data.providerCredentials[TEAMPAFEX_PROVIDER_ID]) });
+  }
+  if (req.params.id === SHADOWFAX_PROVIDER_ID) {
+    return res.json({ provider: shadowfaxServiceProviderPayload(data.providerCredentials[SHADOWFAX_PROVIDER_ID]) });
+  }
+  return res.status(404).json({ error: "Service provider not found" });
 });
 
 app.get("/api/admin/service-providers/:id/credentials", (req, res) => {
-  if (req.params.id !== TEAMPAFEX_PROVIDER_ID) return res.status(404).json({ error: "Service provider not found" });
   const data = ensureProviderCredentialsSeed(readData());
   writeData(data);
-  return res.json(redactedCredentials(data.providerCredentials[TEAMPAFEX_PROVIDER_ID]));
+  if (req.params.id === TEAMPAFEX_PROVIDER_ID) return res.json(redactedCredentials(data.providerCredentials[TEAMPAFEX_PROVIDER_ID]));
+  if (req.params.id === SHADOWFAX_PROVIDER_ID) return res.json(redactedCredentials(data.providerCredentials[SHADOWFAX_PROVIDER_ID]));
+  return res.status(404).json({ error: "Service provider not found" });
 });
 
 app.put("/api/admin/service-providers/:id", (req, res) => {
-  if (req.params.id !== TEAMPAFEX_PROVIDER_ID) return res.status(404).json({ error: "Service provider not found" });
   const data = ensureProviderCredentialsSeed(readData());
-  const current = data.providerCredentials[TEAMPAFEX_PROVIDER_ID];
+  const providerId = req.params.id;
+  const current = data.providerCredentials[providerId];
+  if (!current) return res.status(404).json({ error: "Service provider not found" });
   if (typeof req.body?.b2bSameAsB2c === "boolean") {
     current.b2b = {
       ...current.b2b,
@@ -2740,8 +3329,15 @@ app.put("/api/admin/service-providers/:id", (req, res) => {
 
 app.patch("/api/admin/service-providers/:id/credentials", async (req, res, next) => {
   try {
-    if (req.params.id !== TEAMPAFEX_PROVIDER_ID) return res.status(404).json({ error: "Service provider not found" });
     const type = req.body?.type === "b2b" ? "b2b" : "b2c";
+    if (req.params.id === SHADOWFAX_PROVIDER_ID) {
+      const credentials = await updateStoredShadowfaxCredentials(type, req.body?.credentials || {});
+      return res.json({
+        message: "Shadowfax credentials saved",
+        credentials: redactedCredentials(credentials),
+      });
+    }
+    if (req.params.id !== TEAMPAFEX_PROVIDER_ID) return res.status(404).json({ error: "Service provider not found" });
     const credentials = await updateStoredProviderCredentials(type, req.body?.credentials || {});
     return res.json({
       message: "Courier credentials verified and JWT token saved",

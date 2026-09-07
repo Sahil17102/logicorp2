@@ -11,6 +11,7 @@ export function resolveLogoUrl(logoUrl?: string): string {
 export const COMMON_FIELD_PRESETS: CredentialFieldDef[] = [
   { key: "username", label: "Username", type: "text", required: false },
   { key: "password", label: "Password", type: "password", required: false },
+  { key: "apiToken", label: "API Token", type: "password", required: false },
   { key: "clientId", label: "Client ID", type: "text", required: false },
   { key: "webhookSecret", label: "Webhook Secret", type: "password", required: false },
   { key: "defaultPincode", label: "Default Pincode", type: "text", required: false },

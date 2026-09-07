@@ -17,5 +17,11 @@ services:
         sync: false
       - key: TEAMPAFEX_PASSWORD
         sync: false
+      - key: SHADOWFAX_API_URL
+        value: https://dale.shadowfax.in/api
+      - key: SHADOWFAX_API_TOKEN
+        sync: false
+      - key: SHADOWFAX_WEBHOOK_SECRET
+        sync: false
       - key: CORS_ORIGIN
         value: "*"
