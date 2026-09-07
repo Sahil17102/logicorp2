@@ -128,6 +128,7 @@ function messageFromProviderData(data) {
       })
       .join(", ");
   }
+  if (typeof data.errors === "string" && data.errors.trim()) return data.errors;
   return data.msg || data.message || data.error || "";
 }
 
@@ -3357,7 +3358,12 @@ if (fs.existsSync(CLIENT_DIST_DIR)) {
 }
 
 app.use((err, _req, res, _next) => {
-  res.status(err.status || 500).json({ error: err.message || "Something went wrong" });
+  const status = err.status || 500;
+  const body = { error: err.message || "Something went wrong" };
+  if (err.providerData && status >= 400 && status < 500) {
+    body.providerData = redactedProviderDebug(err.providerData);
+  }
+  res.status(status).json(body);
 });
 
 app.listen(PORT, () => {
