@@ -1338,6 +1338,31 @@ function courierName(courierId) {
   return String(courierId || "Teampafex");
 }
 
+function firstPresent(...values) {
+  return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "");
+}
+
+function normalizeOrderCreatePayload(payload = {}) {
+  const shipping = payload.shippingAddress || payload.deliveryAddress || {};
+  const packageDetails = payload.packageDetails || payload.package || {};
+  return {
+    ...payload,
+    buyerName: firstPresent(payload.buyerName, shipping.contactName, shipping.name, shipping.buyerName),
+    buyerPhone: firstPresent(payload.buyerPhone, shipping.phone, shipping.mobile, shipping.contact),
+    buyerEmail: firstPresent(payload.buyerEmail, shipping.email),
+    address: firstPresent(payload.address, shipping.address, shipping.addressLine1, shipping.address_line_1),
+    address2: firstPresent(payload.address2, shipping.address2, shipping.addressLine2, shipping.address_line_2),
+    city: firstPresent(payload.city, shipping.city),
+    state: firstPresent(payload.state, shipping.state),
+    pincode: firstPresent(payload.pincode, shipping.pincode, shipping.postalCode, shipping.zip),
+    weight: firstPresent(payload.weight, packageDetails.weight, packageDetails.deadWeight),
+    length: firstPresent(payload.length, packageDetails.length),
+    breadth: firstPresent(payload.breadth, payload.width, packageDetails.breadth, packageDetails.width),
+    height: firstPresent(payload.height, packageDetails.height),
+    chargeableWeight: firstPresent(payload.chargeableWeight, packageDetails.chargeableWeight),
+  };
+}
+
 function orderFromPayload(payload, providerResult, providerPickupAddressId, meta = {}) {
   const now = nowIso();
   const provider = meta.serviceProvider || "teampafex";
@@ -2768,9 +2793,10 @@ app.post("/api/rates/b2b/available", async (req, res) => {
 
 app.post("/api/orders", async (req, res, next) => {
   try {
-    if (isShadowfaxCourierSelection(req.body)) {
-      const { result, pickupAddressId } = await createShadowfaxOrder(req.body);
-      const order = orderFromPayload(req.body, result, pickupAddressId, {
+    const orderPayload = normalizeOrderCreatePayload(req.body);
+    if (isShadowfaxCourierSelection(orderPayload)) {
+      const { result, pickupAddressId } = await createShadowfaxOrder(orderPayload);
+      const order = orderFromPayload(orderPayload, result, pickupAddressId, {
         serviceProvider: "shadowfax",
         courierName: "Shadowfax",
       });
@@ -2780,24 +2806,24 @@ app.post("/api/orders", async (req, res, next) => {
       return res.json({ order });
     }
 
-    const providerAddressIds = await resolveProviderAddressIds(req.body.pickupAddressId, req.body.orderType);
-    const deliveryPartnerId = await resolveDeliveryPartnerId(req.body.courierId, req.body.courierName, req.body.orderType);
-    await assertBookableB2cCourier(req.body, deliveryPartnerId);
-    const providerPayload = providerCreatePayload(req.body, providerAddressIds, deliveryPartnerId);
-    const providerResult = await createProviderOrder(providerPayload, req.body.orderType);
+    const providerAddressIds = await resolveProviderAddressIds(orderPayload.pickupAddressId, orderPayload.orderType);
+    const deliveryPartnerId = await resolveDeliveryPartnerId(orderPayload.courierId, orderPayload.courierName, orderPayload.orderType);
+    await assertBookableB2cCourier(orderPayload, deliveryPartnerId);
+    const providerPayload = providerCreatePayload(orderPayload, providerAddressIds, deliveryPartnerId);
+    const providerResult = await createProviderOrder(providerPayload, orderPayload.orderType);
     if (!providerSucceeded(providerResult)) {
-      const reconciled = await findProviderOrderByInvoice(providerPayload.invoice_number, req.body.orderType).catch(() => null);
+      const reconciled = await findProviderOrderByInvoice(providerPayload.invoice_number, orderPayload.orderType).catch(() => null);
       if (!reconciled) {
         const message = messageFromProviderData(providerResult) || "Teampafex order creation failed";
         throw Object.assign(new Error(message), { status: 400, providerData: providerResult });
       }
-      const order = orderFromPayload(req.body, reconciled, providerAddressIds.pickupAddressId);
+      const order = orderFromPayload(orderPayload, reconciled, providerAddressIds.pickupAddressId);
       const data = readData();
       data.orders = [order, ...data.orders.filter((item) => item.id !== order.id)];
       writeData(data);
       return res.json({ order, warning: "Teampafex returned a failed response, but the order was found and saved locally." });
     }
-    const order = orderFromPayload(req.body, providerResult, providerAddressIds.pickupAddressId);
+    const order = orderFromPayload(orderPayload, providerResult, providerAddressIds.pickupAddressId);
     const data = readData();
     data.orders = [order, ...data.orders.filter((item) => item.id !== order.id)];
     writeData(data);
