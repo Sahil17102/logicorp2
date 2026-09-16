@@ -19,14 +19,9 @@ const sizeMap: Record<LogoSize, { icon: string; text: string }> = {
 function LogoMark({ className }: { className: string }) {
   return (
     <span className={`${className} inline-flex shrink-0 items-center justify-center`} aria-hidden="true">
-      <svg viewBox="0 0 64 56" className="h-full w-full">
-        <g stroke="currentColor" strokeWidth="3.4" strokeLinecap="round">
-          <line x1="4" y1="20" x2="20" y2="20" opacity="0.9" />
-          <line x1="1.5" y1="28" x2="20" y2="28" />
-          <line x1="7" y1="36" x2="20" y2="36" opacity="0.9" />
-        </g>
-        <path d="M23 8 h9.5 v26 h11.5 v9 H23 Z" fill="currentColor" />
-        <path d="M39 15 l13 13 l-13 13 v-9 l3.6 -2.4 l-3.6 -1.6 Z" fill="#2563eb" />
+      <svg viewBox="0 0 48 48" className="h-full w-full overflow-visible">
+        <rect x="8" y="8" width="32" height="32" rx="8" transform="rotate(45 24 24)" fill="none" stroke="#2b61d7" strokeWidth="2.8" />
+        <path d="M14.5 26.5 24 17l9.5 9.5" fill="none" stroke="#ff7043" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </span>
   );
@@ -40,22 +35,23 @@ export function AppLogo({
   className = "",
 }: AppLogoProps) {
   const { icon, text } = sizeMap[size];
-  const iconTone = textClassName.includes("text-white") ? "text-white" : "text-[#111827]";
+  const iconTone = textClassName.includes("text-white") ? "text-white" : "text-[#111d36]";
 
   const content = (
     <>
       <LogoMark className={`${icon} ${iconTone}`} />
       {showText && (
-        <strong className={`${text} font-extrabold tracking-normal whitespace-nowrap ${textClassName}`}>
-          Logi<span className="text-[#2563eb]">corp</span>
-        </strong>
+        <span className={`flex flex-col whitespace-nowrap font-extrabold leading-none tracking-[0.02em] ${text} ${textClassName}`}>
+          ROCKETRIDE
+          <small className="mt-1 text-[7px] font-bold tracking-[0.24em] text-[#ff7043]">BY RUDRA FREIGHT SOLUTIONS</small>
+        </span>
       )}
     </>
   );
 
   if (to) {
     return (
-      <Link to={to} className={`flex items-center gap-2.5 no-underline ${className}`} aria-label="Logicorp home">
+      <Link to={to} className={`flex items-center gap-2.5 no-underline ${className}`} aria-label="Rocketride home">
         {content}
       </Link>
     );

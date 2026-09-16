@@ -3,7 +3,7 @@ import { setAccessToken } from "./api";
 import { isCourierApiConfigured, loginCourierApi, shouldUseCourierApi } from "./courierApi";
 
 const USER_STORAGE_KEY = "logicorp-client-user";
-const ONBOARDING_STORAGE_KEY = "logicorp-client-onboarding-complete";
+const ACCOUNTS_STORAGE_KEY = "rocketride-client-accounts";
 
 const DEMO_USER: User = {
   id: "demo-client-user",
@@ -20,10 +20,6 @@ const DEMO_USER: User = {
   hasPassword: true,
 };
 
-function hasCompletedOnboarding(): boolean {
-  return localStorage.getItem(ONBOARDING_STORAGE_KEY) !== "false";
-}
-
 function withOnboardingState(user: User): User {
   const isLegacyDemoUser =
     user.id === DEMO_USER.id ||
@@ -33,12 +29,46 @@ function withOnboardingState(user: User): User {
   return {
     ...user,
     email: isLegacyDemoUser && user.email === "client@logicorp.in" ? DEMO_USER.email : user.email,
-    name: isLegacyDemoUser ? DEMO_USER.name : user.name || DEMO_USER.name,
-    firstName: isLegacyDemoUser ? DEMO_USER.firstName : user.firstName || DEMO_USER.firstName,
-    lastName: isLegacyDemoUser ? DEMO_USER.lastName : user.lastName || DEMO_USER.lastName,
+    name: isLegacyDemoUser ? DEMO_USER.name : user.name,
+    firstName: isLegacyDemoUser ? DEMO_USER.firstName : user.firstName,
+    lastName: isLegacyDemoUser ? DEMO_USER.lastName : user.lastName,
     isVerified: true,
-    onboardingComplete: true,
+    onboardingComplete: user.onboardingComplete,
   };
+}
+
+function normalizeIdentifier(identifier: string): string {
+  return identifier.trim().toLowerCase();
+}
+
+function readAccounts(): User[] {
+  try {
+    const raw = localStorage.getItem(ACCOUNTS_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as User[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function findAccount(identifier: string): User | null {
+  const normalized = normalizeIdentifier(identifier);
+  const saved = readAccounts().find((account) =>
+    [account.email, account.phone].some((value) => value && normalizeIdentifier(value) === normalized),
+  );
+  if (saved) return saved;
+
+  const current = readUser();
+  if (current && [current.email, current.phone].some((value) => value && normalizeIdentifier(value) === normalized)) {
+    return current;
+  }
+  return null;
+}
+
+function saveAccount(user: User): void {
+  const accounts = readAccounts();
+  const next = accounts.filter((account) => account.id !== user.id);
+  next.push(user);
+  localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(next));
 }
 
 function readUser(): User | null {
@@ -52,20 +82,25 @@ function readUser(): User | null {
 }
 
 function persistUser(user: User): User {
-  localStorage.setItem(ONBOARDING_STORAGE_KEY, "true");
   const normalized = withOnboardingState(user);
   localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(normalized));
+  saveAccount(normalized);
   setAccessToken("static-client-token");
   return normalized;
 }
 
-function makeLoginUser(identifier?: string): User {
+function makeLoginUser(identifier?: string, onboardingComplete = false): User {
   const cleanIdentifier = identifier?.trim() || "";
   return {
     ...DEMO_USER,
-    email: cleanIdentifier.includes("@") ? cleanIdentifier : DEMO_USER.email,
-    phone: cleanIdentifier && !cleanIdentifier.includes("@") ? cleanIdentifier : DEMO_USER.phone,
-    onboardingComplete: true,
+    id: `client-${normalizeIdentifier(cleanIdentifier || crypto.randomUUID())}`,
+    email: cleanIdentifier.includes("@") ? cleanIdentifier : null,
+    phone: cleanIdentifier && !cleanIdentifier.includes("@") ? cleanIdentifier : null,
+    name: null,
+    firstName: null,
+    lastName: null,
+    onboardingComplete,
+    hasPassword: false,
   };
 }
 
@@ -76,16 +111,17 @@ export const authApi = {
     return user;
   },
 
-  sendOtp: async (_email: string): Promise<{ isNewUser: boolean }> => {
-    return { isNewUser: !hasCompletedOnboarding() };
+  sendOtp: async (identifier: string): Promise<{ isNewUser: boolean }> => {
+    return { isNewUser: !findAccount(identifier) };
   },
 
   verifyOtp: async (params: {
     identifier: string;
     code: string;
   }): Promise<{ user: User; isNewUser: boolean }> => {
-    const user = makeLoginUser(params.identifier);
-    return { user: persistUser(user), isNewUser: !user.onboardingComplete };
+    const existingUser = findAccount(params.identifier);
+    const user = existingUser ?? makeLoginUser(params.identifier, false);
+    return { user: persistUser(user), isNewUser: !existingUser };
   },
 
   loginWithPassword: async (params: {
@@ -96,15 +132,18 @@ export const authApi = {
     if (shouldUseCourierApi() && !isCourierApiConfigured()) {
       await loginCourierApi(identifier, params.password);
     }
-    const user = makeLoginUser(identifier);
+    const user = findAccount(identifier);
+    if (!user) throw new Error("Account not found. Please sign in with OTP to create your account.");
     return { user: persistUser(user) };
   },
 
   loginWithGoogle: async (params: {
     accessToken: string;
   }): Promise<{ user: User; isNewUser: boolean }> => {
-    const user = makeLoginUser(params.accessToken.includes("@") ? params.accessToken : undefined);
-    return { user: persistUser(user), isNewUser: !user.onboardingComplete };
+    const identifier = params.accessToken.includes("@") ? params.accessToken : undefined;
+    const existingUser = identifier ? findAccount(identifier) : null;
+    const user = existingUser ?? makeLoginUser(identifier, false);
+    return { user: persistUser(user), isNewUser: !existingUser };
   },
 
   onboarding: async (payload: Record<string, unknown>): Promise<{ user: User }> => {

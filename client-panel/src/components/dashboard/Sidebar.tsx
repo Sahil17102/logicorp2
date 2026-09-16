@@ -58,12 +58,13 @@ export function Sidebar({ mobileOpen, onMobileClose, collapsed }: SidebarProps) 
     <>
       {/* Desktop sidebar */}
       <aside
-        className={`hidden lg:flex flex-col bg-background-elevated border-r border-border-light h-screen sticky top-0 shrink-0 transition-[width] duration-200 ease-in-out ${
+        className={`hidden lg:flex flex-col bg-background-elevated border-r border-primary/10 h-screen sticky top-0 shrink-0 transition-[width] duration-200 ease-in-out shadow-[4px_0_22px_rgba(17,29,54,0.035)] ${
           collapsed ? "w-[68px]" : "w-60"
         }`}
       >
         {/* Header */}
-        <div className={`flex items-center h-14 px-3 border-b border-border-light shrink-0 ${collapsed ? "justify-center" : ""}`}>
+        <div className={`relative flex items-center h-14 px-3 border-b border-primary/10 shrink-0 overflow-hidden ${collapsed ? "justify-center" : ""}`}>
+          <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-primary/60 via-accent/45 to-transparent" />
           <AppLogo size="sm" showText={!collapsed} to="/home" />
         </div>
 

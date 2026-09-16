@@ -2,10 +2,7 @@
  * Single source of truth for app theme.
  * No hardcoded colors elsewhere — use these tokens or CSS vars derived from them.
  *
- * Palette aligned with the public Logicorp landing page:
- *   primary = Logicorp Blue (#2563EB)
- *   accent  = Cyan delivery highlight (#22D3EE)
- * Font: Plus Jakarta Sans
+ * Palette aligned with the public Rocketride landing page.
  */
 
 /* ── Color palette shape (shared by light & dark) ── */
@@ -63,27 +60,27 @@ export interface ColorPalette {
 /* ── Light palette ── */
 
 export const lightColors: ColorPalette = {
-  primary: "#2563EB",
-  primaryHover: "#1D4ED8",
-  primaryBg: "rgba(37, 99, 235, 0.10)",
-  primaryLight: "#DBEAFE",
+  primary: "#225BD6",
+  primaryHover: "#1849B8",
+  primaryBg: "rgba(34, 91, 214, 0.10)",
+  primaryLight: "#E7EEFF",
 
-  accent: "#22D3EE",
-  accentHover: "#2563EB",
-  accentBg: "rgba(34, 211, 238, 0.14)",
+  accent: "#FF7043",
+  accentHover: "#E85B31",
+  accentBg: "rgba(255, 112, 67, 0.14)",
 
-  text: "#0F172A",
-  textSecondary: "#475569",
-  textTertiary: "#64748B",
+  text: "#111D36",
+  textSecondary: "#52627A",
+  textTertiary: "#718096",
 
-  border: "#D8E3F5",
-  borderLight: "rgba(191, 219, 254, 0.72)",
+  border: "#DCE4F1",
+  borderLight: "rgba(220, 228, 241, 0.82)",
 
-  bg: "#F7FAFF",
+  bg: "#F7F9FD",
   bgElevated: "#FFFFFF",
 
-  heroDark: "#0F172A",
-  heroGradientEnd: "#1D4ED8",
+  heroDark: "#111D36",
+  heroGradientEnd: "#183B91",
 
   loadingOverlay: "rgba(247, 250, 255, 0.92)",
 
@@ -109,14 +106,14 @@ export const lightColors: ColorPalette = {
 /* ── Dark palette ── */
 
 export const darkColors: ColorPalette = {
-  primary: "#60A5FA",
-  primaryHover: "#93C5FD",
-  primaryBg: "rgba(96, 165, 250, 0.16)",
-  primaryLight: "#172554",
+  primary: "#5B9CFF",
+  primaryHover: "#7DB1FF",
+  primaryBg: "rgba(91, 156, 255, 0.16)",
+  primaryLight: "#19366E",
 
-  accent: "#22D3EE",
-  accentHover: "#67E8F9",
-  accentBg: "rgba(34, 211, 238, 0.16)",
+  accent: "#FF8058",
+  accentHover: "#FFA184",
+  accentBg: "rgba(255, 112, 67, 0.16)",
 
   text: "#F8FAFC",
   textSecondary: "#CBD5E1",
@@ -128,8 +125,8 @@ export const darkColors: ColorPalette = {
   bg: "#08111F",
   bgElevated: "#0F1A2D",
 
-  heroDark: "#08111F",
-  heroGradientEnd: "#102A56",
+  heroDark: "#07122A",
+  heroGradientEnd: "#183B91",
 
   loadingOverlay: "rgba(8, 17, 31, 0.92)",
 

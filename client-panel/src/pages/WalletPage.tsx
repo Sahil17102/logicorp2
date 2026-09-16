@@ -128,7 +128,7 @@ export function WalletPage() {
         amount: order.amount * 100,
         currency: order.currency,
         order_id: order.orderId,
-        name: "Logicorp",
+        name: "Rocketride",
         description: `Wallet Recharge - ${formatCurrency(order.amount)}`,
         prefill: {
           name: user?.name ?? "",

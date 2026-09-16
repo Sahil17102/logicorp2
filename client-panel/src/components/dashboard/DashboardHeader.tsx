@@ -113,7 +113,7 @@ export function DashboardHeader({ onMobileMenuOpen, sidebarCollapsed, onToggleSi
   };
 
   return (
-    <header className="sticky top-0 z-20 h-14 bg-background-elevated border-b border-border-light flex items-center justify-between px-4 sm:px-6 shrink-0">
+    <header className="sticky top-0 z-20 h-14 bg-background-elevated/90 backdrop-blur-xl border-b border-primary/10 flex items-center justify-between px-4 sm:px-6 shrink-0 shadow-[0_1px_12px_rgba(17,29,54,0.035)]">
       {/* Left */}
       <div className={`flex items-center gap-1 min-w-0 shrink-0 ${searchOpen ? "hidden sm:flex" : ""}`}>
         <button

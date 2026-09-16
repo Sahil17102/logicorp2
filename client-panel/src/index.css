@@ -368,6 +368,49 @@
   }
 }
 
+/* Dashboard atmosphere — subtle enough for data-heavy working screens. */
+.dashboard-content {
+  background-color: var(--color-bg);
+  background-image:
+    linear-gradient(rgba(34, 91, 214, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 91, 214, 0.025) 1px, transparent 1px),
+    radial-gradient(circle at 92% 3%, rgba(34, 91, 214, 0.08), transparent 28%),
+    radial-gradient(circle at 8% 95%, rgba(255, 112, 67, 0.055), transparent 25%);
+  background-size: 42px 42px, 42px 42px, auto, auto;
+}
+
+[data-theme="dark"] .dashboard-content {
+  background-image:
+    linear-gradient(rgba(91, 156, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91, 156, 255, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 92% 3%, rgba(34, 91, 214, 0.16), transparent 30%),
+    radial-gradient(circle at 8% 95%, rgba(255, 112, 67, 0.08), transparent 25%);
+}
+
+.dashboard-content .bg-background-elevated {
+  box-shadow: 0 8px 28px rgba(17, 29, 54, 0.045);
+}
+
+.dashboard-content a.bg-background-elevated,
+.dashboard-content button.bg-background-elevated {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.dashboard-content a.bg-background-elevated:hover,
+.dashboard-content button.bg-background-elevated:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 34px rgba(34, 91, 214, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-content *,
+  .dashboard-content *::before,
+  .dashboard-content *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 /* ─── Global Ant Design theme overrides (customer portal) ───
    Makes all Ant Design components respect our CSS variable theme
    so they work correctly in both light and dark mode.
