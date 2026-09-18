@@ -643,21 +643,13 @@ export const ordersApi = {
   },
 
   downloadLabel: async (id: string, awb: string): Promise<void> => {
-    if (shouldUseCourierApi()) {
-      throw new Error("Courier API label download endpoint is not available in the provided documentation.");
-    }
-
     const { data } = await api.get(`/orders/${id}/label`, { responseType: "blob" });
-    downloadBlob(data, `label-${awb}.pdf`);
+    downloadBlob(data, `label-${(awb || id).replace(/[^\w.-]+/g, "_")}.pdf`);
   },
 
   downloadInvoice: async (id: string, orderId: string): Promise<void> => {
-    if (shouldUseCourierApi()) {
-      throw new Error("Courier API invoice download endpoint is not available in the provided documentation.");
-    }
-
     const { data } = await api.get(`/orders/${id}/invoice`, { responseType: "blob" });
-    downloadBlob(data, `invoice-${orderId}.pdf`);
+    downloadBlob(data, `invoice-${(orderId || id).replace(/[^\w.-]+/g, "_")}.pdf`);
   },
 
   // ── New lifecycle APIs ──
@@ -729,20 +721,12 @@ export const ordersApi = {
   },
 
   downloadBulkLabels: async (orderIds: string[]): Promise<void> => {
-    if (shouldUseCourierApi()) {
-      throw new Error("Courier API bulk label download endpoint is not available in the provided documentation.");
-    }
-
     const { data } = await api.post("/orders/bulk-labels", { orderIds }, { responseType: "blob" });
     downloadBlob(data, `labels-${orderIds.length}.pdf`);
   },
 
   /** Download the pickup manifest for a single order. Same download-only rules as the bulk version. */
   downloadManifest: async (id: string, orderId: string): Promise<void> => {
-    if (shouldUseCourierApi()) {
-      throw new Error("Courier API manifest download endpoint is not available in the provided documentation.");
-    }
-
     const { data } = await api.post("/orders/manifest", { orderIds: [id] }, { responseType: "blob" });
     downloadBlob(data, `manifest-${orderId.replace(/[^\w.-]+/g, "_")}.pdf`);
   },
@@ -753,10 +737,6 @@ export const ordersApi = {
    * orders manifested (that stays with "Initiate Pickup").
    */
   downloadBulkManifest: async (orderIds: string[]): Promise<void> => {
-    if (shouldUseCourierApi()) {
-      throw new Error("Courier API bulk manifest download endpoint is not available in the provided documentation.");
-    }
-
     const { data } = await api.post("/orders/manifest", { orderIds }, { responseType: "blob" });
     downloadBlob(data, `manifest-${orderIds.length}.pdf`);
   },

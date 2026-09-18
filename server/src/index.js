@@ -826,6 +826,101 @@ function ordersForUser(orders, user) {
   return orders.filter((order) => order.userId === user.id);
 }
 
+function findOrderForRequest(req, data = readData()) {
+  const user = userFromRequest(req, data);
+  return ordersForUser(data.orders || [], user).find((item) => (
+    item.id === req.params.id ||
+    item.orderId === req.params.id ||
+    item.providerOrderId === req.params.id ||
+    item.awb === req.params.id
+  ));
+}
+
+function pdfEscape(value) {
+  return String(value ?? "").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+}
+
+function makeSimplePdf(title, lines = []) {
+  const safeLines = [title, "", ...lines]
+    .flatMap((line) => String(line ?? "").split(/\r?\n/))
+    .flatMap((line) => {
+      const chunks = [];
+      const text = line || " ";
+      for (let i = 0; i < text.length; i += 88) chunks.push(text.slice(i, i + 88));
+      return chunks.length ? chunks : [" "];
+    })
+    .slice(0, 48);
+  const content = [
+    "BT",
+    "/F1 18 Tf",
+    "50 790 Td",
+    `(${pdfEscape(safeLines[0])}) Tj`,
+    "/F1 10 Tf",
+    "0 -28 Td",
+    ...safeLines.slice(1).flatMap((line) => [`(${pdfEscape(line)}) Tj`, "0 -15 Td"]),
+    "ET",
+  ].join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${Buffer.byteLength(content, "utf8")} >>\nstream\n${content}\nendstream`,
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf, "utf8"));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = Buffer.byteLength(pdf, "utf8");
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return Buffer.from(pdf, "utf8");
+}
+
+function orderDocumentLines(order) {
+  const delivery = order.deliveryAddress || {};
+  const pickup = order.pickupAddress || {};
+  const products = Array.isArray(order.products) ? order.products : [];
+  return [
+    `Order ID: ${order.orderId || order.id}`,
+    `AWB: ${order.awb || "Not assigned"}`,
+    `Status: ${order.status || ""}`,
+    `Courier: ${order.courierName || order.serviceProvider || ""}`,
+    `Payment: ${String(order.paymentType || "").toUpperCase()}`,
+    `Order Type: ${order.orderType || ""}`,
+    "",
+    "Ship To",
+    `${delivery.contactName || delivery.buyerName || ""}`,
+    `${delivery.phone || ""} ${delivery.email || ""}`.trim(),
+    `${delivery.addressLine1 || delivery.address || ""}`,
+    `${delivery.city || ""}, ${delivery.state || ""} - ${delivery.pincode || ""}`,
+    "",
+    "Pickup From",
+    `${pickup.contactName || pickup.name || pickup.nickname || ""}`,
+    `${pickup.addressLine1 || pickup.address || ""}`,
+    `${pickup.city || ""}, ${pickup.state || ""} - ${pickup.pincode || ""}`,
+    "",
+    "Products",
+    ...(products.length ? products.map((item, i) => `${i + 1}. ${item.name || item.productName || "Item"} x ${item.quantity || item.qty || 1}`) : ["No product rows"]),
+    "",
+    `Total: INR ${round(toNumber(order.totalAmount || order.orderAmount || order.invoiceValue || 0), 2)}`,
+    `Generated: ${nowIso()}`,
+  ];
+}
+
+function sendPdf(res, filename, title, lines) {
+  const pdf = makeSimplePdf(title, lines);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${safeFileName(filename)}"`);
+  res.setHeader("Content-Length", String(pdf.length));
+  return res.send(pdf);
+}
+
 function credentialFields() {
   return [
     { key: "baseUrl", label: "Base URL", type: "text", required: true },
@@ -3379,6 +3474,103 @@ app.get("/api/orders/courier-options", async (req, res) => {
     return acc;
   }, {}));
   res.json({ couriers });
+});
+
+app.get("/api/orders/:id/label", (req, res) => {
+  const data = readData();
+  const order = findOrderForRequest(req, data);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  return sendPdf(
+    res,
+    `label-${order.awb || order.orderId || order.id}.pdf`,
+    "Logicorp Shipping Label",
+    orderDocumentLines(order),
+  );
+});
+
+app.get("/api/orders/:id/invoice", (req, res) => {
+  const data = readData();
+  const order = findOrderForRequest(req, data);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  const invoice = Array.isArray(order.invoices) ? order.invoices[0] : null;
+  return sendPdf(
+    res,
+    `invoice-${order.orderId || order.id}.pdf`,
+    "Logicorp Tax Invoice",
+    [
+      `Invoice No: ${invoice?.invoiceNumber || order.orderId || order.id}`,
+      `Invoice Date: ${invoice?.invoiceDate || String(order.createdAt || "").slice(0, 10)}`,
+      `Invoice Value: INR ${round(toNumber(invoice?.invoiceValue || order.totalAmount || order.orderAmount || 0), 2)}`,
+      "",
+      ...orderDocumentLines(order),
+    ],
+  );
+});
+
+app.post("/api/orders/bulk-labels", (req, res) => {
+  const data = readData();
+  const user = userFromRequest(req, data);
+  const ids = Array.isArray(req.body?.orderIds) ? req.body.orderIds.map(String) : [];
+  const orders = ordersForUser(data.orders || [], user).filter((order) => (
+    ids.includes(String(order.id)) || ids.includes(String(order.orderId)) || ids.includes(String(order.providerOrderId))
+  ));
+  if (!orders.length) return res.status(404).json({ error: "No matching orders found" });
+  return sendPdf(
+    res,
+    `labels-${orders.length}.pdf`,
+    "Logicorp Bulk Shipping Labels",
+    orders.flatMap((order, index) => [
+      `--- Label ${index + 1} ---`,
+      ...orderDocumentLines(order),
+      "",
+    ]),
+  );
+});
+
+app.post("/api/orders/manifest", (req, res) => {
+  const data = readData();
+  const user = userFromRequest(req, data);
+  const ids = Array.isArray(req.body?.orderIds) ? req.body.orderIds.map(String) : [];
+  const orders = ordersForUser(data.orders || [], user).filter((order) => (
+    ids.includes(String(order.id)) || ids.includes(String(order.orderId)) || ids.includes(String(order.providerOrderId))
+  ));
+  if (!orders.length) return res.status(404).json({ error: "No matching orders found" });
+  return sendPdf(
+    res,
+    `manifest-${orders.length}.pdf`,
+    "Logicorp Pickup Manifest",
+    [
+      `Total Orders: ${orders.length}`,
+      `Generated: ${nowIso()}`,
+      "",
+      ...orders.map((order, index) => (
+        `${index + 1}. ${order.orderId || order.id} | AWB: ${order.awb || "N/A"} | ${order.courierName || order.serviceProvider || ""} | ${order.deliveryAddress?.contactName || ""} | ${order.deliveryAddress?.pincode || ""}`
+      )),
+    ],
+  );
+});
+
+app.post("/api/orders/manifest-orders", (req, res) => {
+  const data = readData();
+  const user = userFromRequest(req, data);
+  const ids = Array.isArray(req.body?.orderIds) ? req.body.orderIds.map(String) : [];
+  const now = nowIso();
+  let processed = 0;
+  data.orders = (data.orders || []).map((order) => {
+    const belongsToUser = ordersForUser([order], user).length > 0;
+    const selected = ids.includes(String(order.id)) || ids.includes(String(order.orderId)) || ids.includes(String(order.providerOrderId));
+    if (!belongsToUser || !selected) return order;
+    processed += 1;
+    return {
+      ...order,
+      status: order.status === "created" ? "pickup_initiated" : order.status,
+      manifestUrl: order.manifestUrl || `/api/orders/manifest?orderId=${encodeURIComponent(order.id)}`,
+      shippedAt: order.shippedAt || now,
+      updatedAt: now,
+    };
+  });
+  writeData(data);
+  return res.json({ ordersProcessed: processed, errors: [], warnings: [] });
 });
 
 app.post("/api/orders/:id/cancel", async (req, res, next) => {
