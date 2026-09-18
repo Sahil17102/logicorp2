@@ -1,5 +1,5 @@
 import type { User } from "@/contexts/AuthContext";
-import { setAccessToken } from "./api";
+import { api, setAccessToken } from "./api";
 import { isCourierApiConfigured, loginCourierApi, shouldUseCourierApi } from "./courierApi";
 
 const USER_STORAGE_KEY = "logicorp-client-user";
@@ -112,13 +112,24 @@ export const authApi = {
   },
 
   sendOtp: async (identifier: string): Promise<{ isNewUser: boolean }> => {
-    return { isNewUser: !findAccount(identifier) };
+    const cleanIdentifier = identifier.trim();
+    if (cleanIdentifier.includes("@")) {
+      const { data } = await api.post<{ isNewUser: boolean }>("/auth/send-otp", {
+        identifier: cleanIdentifier,
+      });
+      return data;
+    }
+    return { isNewUser: !findAccount(cleanIdentifier) };
   },
 
   verifyOtp: async (params: {
     identifier: string;
     code: string;
   }): Promise<{ user: User; isNewUser: boolean }> => {
+    if (params.identifier.includes("@")) {
+      const { data } = await api.post<{ user: User; isNewUser: boolean }>("/auth/verify-otp", params);
+      return { user: persistUser(data.user), isNewUser: data.isNewUser };
+    }
     const existingUser = findAccount(params.identifier);
     const user = existingUser ?? makeLoginUser(params.identifier, false);
     return { user: persistUser(user), isNewUser: !existingUser };

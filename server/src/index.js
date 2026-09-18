@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import axios from "axios";
 import cors from "cors";
 import express from "express";
+import nodemailer from "nodemailer";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8080);
@@ -21,9 +22,17 @@ const SHADOWFAX_WEBHOOK_SECRET = process.env.SHADOWFAX_WEBHOOK_SECRET || "";
 const SHADOWFAX_PROVIDER_ID = "sp-shadowfax";
 const SHADOWFAX_FORWARD_COURIER_ID = "shadowfax:forward";
 const SEED_CREATED_AT = "2026-09-03T00:00:00.000Z";
+const APP_EMAIL = process.env.APP_EMAIL || process.env.SMTP_FROM || process.env.SMTP_USER || "support@logicorp.in";
+const SMTP_HOST = process.env.SMTP_HOST || "smtp.gmail.com";
+const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
+const SMTP_SECURE = String(process.env.SMTP_SECURE || "true") !== "false";
+const SMTP_USER = process.env.SMTP_USER || APP_EMAIL;
+const SMTP_PASS = process.env.SMTP_PASS || "";
+const OTP_TTL_MS = 10 * 60 * 1000;
 
 let cachedToken = TEAMPAFEX_API_TOKEN || null;
 let cachedTokenKey = TEAMPAFEX_API_TOKEN ? "env-token" : null;
+let mailTransporter = null;
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -68,6 +77,82 @@ function writeData(data) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
   return data;
+}
+
+function appEmail() {
+  return APP_EMAIL;
+}
+
+function isEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+function generateOtp() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function otpEmailHtml(code) {
+  return `
+    <div style="font-family:Inter,Arial,sans-serif;line-height:1.5;color:#111827">
+      <h2 style="margin:0 0 12px;color:#111827">Your Logicorp verification code</h2>
+      <p style="margin:0 0 16px">Use this OTP to sign in to your Logicorp account.</p>
+      <div style="display:inline-block;padding:14px 18px;border-radius:12px;background:#eef4ff;color:#1d4ed8;font-size:28px;font-weight:800;letter-spacing:8px">
+        ${code}
+      </div>
+      <p style="margin:18px 0 0;color:#6b7280;font-size:13px">This code expires in 10 minutes. If you did not request it, you can ignore this email.</p>
+    </div>
+  `;
+}
+
+function getMailTransporter() {
+  if (!SMTP_USER || !SMTP_PASS) {
+    throw Object.assign(new Error("SMTP_USER and SMTP_PASS are required for email OTP."), { status: 500 });
+  }
+  if (!mailTransporter) {
+    mailTransporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_SECURE,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+    });
+  }
+  return mailTransporter;
+}
+
+async function sendAppMail({ to, subject, text, html }) {
+  const transporter = getMailTransporter();
+  return transporter.sendMail({
+    from: `"Logicorp" <${appEmail()}>`,
+    to,
+    subject,
+    text,
+    html,
+  });
+}
+
+function normalizeIdentifier(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function defaultAuthUser(identifier) {
+  const clean = normalizeIdentifier(identifier);
+  const now = nowIso();
+  return {
+    id: clean ? `client-${clean.replace(/[^a-z0-9]+/g, "-")}` : "demo-client-user",
+    email: clean.includes("@") ? clean : appEmail(),
+    phone: clean && !clean.includes("@") ? clean : null,
+    name: clean === appEmail() ? "Sahil Mittal" : null,
+    firstName: clean === appEmail() ? "Sahil" : null,
+    lastName: clean === appEmail() ? "Mittal" : null,
+    role: "user",
+    teamRole: "owner",
+    parentUserId: null,
+    isVerified: true,
+    onboardingComplete: true,
+    hasPassword: false,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 function toNumber(value, fallback = 0) {
@@ -388,7 +473,7 @@ function defaultPickupAddress() {
     nickname: "LOGICORP GLOBAL SOLUTIONS",
     contactName: "MAHENDRA SINGH",
     phone: "8860007910",
-    email: "support@logicorp.in",
+    email: appEmail(),
     role: "warehouse_manager",
     landmark: "Near Lumax Sector 18",
     addressLine1: "MAHENDRA SINGH COMPOUND NEAR LUMAX SECTOR 18",
@@ -479,14 +564,14 @@ function defaultSeller() {
     name: "Sahil Mittal",
     firstName: "Sahil",
     lastName: "Mittal",
-    email: "support@logicorp.in",
+    email: appEmail(),
     phone: "9876543210",
     businessName: "Sahil Mittal Store",
     pincode: "110001",
     city: "New Delhi",
     state: "Delhi",
     website: "https://logicorp.in",
-    supportEmail: "support@logicorp.in",
+    supportEmail: appEmail(),
     contactNumber: "9876543210",
     address: "Connaught Place, New Delhi",
     sellsOn: ["Website", "Shopify"],
@@ -2714,6 +2799,64 @@ app.get("/api/health/shadowfax", (_req, res) => {
     baseUrl: normalizeBaseUrl(credentials.baseUrl),
     webhookConfigured: Boolean(credentials.webhookSecret),
   });
+});
+
+app.post("/api/auth/send-otp", async (req, res, next) => {
+  try {
+    const identifier = normalizeIdentifier(req.body?.identifier);
+    if (!isEmail(identifier)) {
+      return res.status(400).json({ error: "Enter a valid email address to receive OTP." });
+    }
+    const data = readData();
+    const code = generateOtp();
+    const existingUsers = Array.isArray(data.authUsers) ? data.authUsers : [];
+    const isNewUser = !existingUsers.some((user) => normalizeIdentifier(user.email) === identifier);
+    data.authOtps = [
+      {
+        identifier,
+        code,
+        expiresAt: Date.now() + OTP_TTL_MS,
+        createdAt: nowIso(),
+      },
+      ...(data.authOtps || []).filter((otp) => normalizeIdentifier(otp.identifier) !== identifier && Number(otp.expiresAt) > Date.now()),
+    ].slice(0, 100);
+    writeData(data);
+    await sendAppMail({
+      to: identifier,
+      subject: "Your Logicorp OTP",
+      text: `Your Logicorp OTP is ${code}. It expires in 10 minutes.`,
+      html: otpEmailHtml(code),
+    });
+    return res.json({ isNewUser });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+app.post("/api/auth/verify-otp", (req, res) => {
+  const identifier = normalizeIdentifier(req.body?.identifier);
+  const code = String(req.body?.code || "").trim();
+  if (!isEmail(identifier) || !/^\d{6}$/.test(code)) {
+    return res.status(400).json({ error: "Valid email and 6-digit OTP are required." });
+  }
+  const data = readData();
+  const now = Date.now();
+  const otp = (data.authOtps || []).find((item) => (
+    normalizeIdentifier(item.identifier) === identifier &&
+    String(item.code) === code &&
+    Number(item.expiresAt) > now
+  ));
+  if (!otp) return res.status(400).json({ error: "Invalid or expired OTP." });
+
+  const users = Array.isArray(data.authUsers) ? data.authUsers : [];
+  const existing = users.find((user) => normalizeIdentifier(user.email) === identifier);
+  const isNewUser = !existing;
+  const user = existing || defaultAuthUser(identifier);
+  const updatedUser = { ...user, email: identifier, isVerified: true, updatedAt: nowIso() };
+  data.authUsers = [updatedUser, ...users.filter((item) => item.id !== updatedUser.id)];
+  data.authOtps = (data.authOtps || []).filter((item) => normalizeIdentifier(item.identifier) !== identifier);
+  writeData(data);
+  return res.json({ user: updatedUser, isNewUser });
 });
 
 app.get("/api/kyc", (_req, res) => {

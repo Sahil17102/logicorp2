@@ -16,6 +16,12 @@ Required VPS/systemd environment variables:
 - `SHADOWFAX_API_TOKEN`
 - `SHADOWFAX_API_URL` optional, defaults to `https://dale.shadowfax.in/api`
 - `SHADOWFAX_WEBHOOK_SECRET` optional, must match the callback auth header if set
+- `APP_EMAIL` sender/support email shown in seeded data
+- `SMTP_USER` Gmail/Google Workspace email used for OTP emails
+- `SMTP_PASS` Gmail app password for `SMTP_USER`
+- `SMTP_HOST` optional, defaults to `smtp.gmail.com`
+- `SMTP_PORT` optional, defaults to `465`
+- `SMTP_SECURE` optional, defaults to `true`
 - `CORS_ORIGIN` optional, comma-separated client/admin origins or `*`
 - `DATA_DIR` optional persistent disk path, for example `/var/data`
 

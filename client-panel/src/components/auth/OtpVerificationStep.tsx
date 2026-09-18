@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, KeyRound, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, MailCheck } from "lucide-react";
 import { animationConfig } from "@/config/animations";
 import { OtpInput } from "./OtpInput";
 import { ErrorBanner } from "./ErrorBanner";
@@ -9,8 +9,6 @@ const slideVariants = {
   center: { opacity: 1, x: 0 },
   exit: { opacity: 0, x: -20 },
 };
-
-const DEMO_OTP = "123456";
 
 interface OtpVerificationStepProps {
   identifier: string;
@@ -65,25 +63,15 @@ export function OtpVerificationStep({
         <div className="mb-5 rounded-2xl border border-primary/20 bg-primary/[0.04] p-4">
           <div className="flex items-start gap-3">
             <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <KeyRound className="h-4 w-4" />
+              <MailCheck className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-                Demo OTP
+                Check your inbox
               </p>
-              <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
-                <span className="font-mono text-2xl font-bold tracking-[0.28em] text-foreground">
-                  {DEMO_OTP}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onOtpComplete(DEMO_OTP)}
-                  disabled={loading}
-                  className="h-9 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm shadow-primary/20 transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Verify OTP
-                </button>
-              </div>
+              <p className="mt-1 text-sm text-muted">
+                Enter the 6-digit OTP sent to your email. The code expires in 10 minutes.
+              </p>
             </div>
           </div>
         </div>
