@@ -23,6 +23,7 @@ let onSessionExpired: SessionExpiredListener | null = null;
 
 const DEFAULT_API_URL = "https://api.logicorp.in/api";
 const API_BASE_URL = import.meta.env.VITE_API_URL || DEFAULT_API_URL;
+const USER_STORAGE_KEY = "logicorp-client-user";
 
 export function setOnSessionExpired(listener: SessionExpiredListener | null): void {
   onSessionExpired = listener;
@@ -43,6 +44,16 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  try {
+    const rawUser = typeof window !== "undefined" ? window.localStorage.getItem(USER_STORAGE_KEY) : null;
+    if (rawUser) {
+      const user = JSON.parse(rawUser) as { id?: string; email?: string | null };
+      if (user.id) config.headers["X-Logicorp-User-Id"] = user.id;
+      if (user.email) config.headers["X-Logicorp-User-Email"] = user.email;
+    }
+  } catch {
+    // Ignore malformed local session data; auth flow will repair it.
   }
   return config;
 });

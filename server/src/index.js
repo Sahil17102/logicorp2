@@ -270,7 +270,7 @@ function defaultAuthUser(identifier) {
     teamRole: "owner",
     parentUserId: null,
     isVerified: true,
-    onboardingComplete: true,
+    onboardingComplete: false,
     hasPassword: false,
     createdAt: now,
     updatedAt: now,
@@ -640,6 +640,32 @@ function defaultKyc() {
   };
 }
 
+function emptyDocument() {
+  return { status: "not_uploaded" };
+}
+
+function defaultKycForUser(user = defaultSeller()) {
+  const createdAt = nowIso();
+  return {
+    id: `kyc-${String(user.id || "user").replace(/[^a-zA-Z0-9_-]+/g, "-")}`,
+    userId: user.id || "demo-client-user",
+    businessStructure: undefined,
+    status: "not_submitted",
+    selfie: emptyDocument(),
+    panCard: emptyDocument(),
+    aadhaar: emptyDocument(),
+    cancelledCheque: emptyDocument(),
+    boardResolution: emptyDocument(),
+    partnershipDeed: emptyDocument(),
+    llpAgreement: emptyDocument(),
+    companyAddressProof: emptyDocument(),
+    businessPan: emptyDocument(),
+    gstCertificate: emptyDocument(),
+    createdAt,
+    updatedAt: createdAt,
+  };
+}
+
 function approvedKyc(existing = {}) {
   const fallback = defaultKyc();
   return {
@@ -707,6 +733,97 @@ function defaultSeller() {
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function displayNameFromUser(user = {}) {
+  const full = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+  if (user.name) return user.name;
+  if (full) return full;
+  if (user.email) return String(user.email).split("@")[0];
+  if (user.phone) return String(user.phone);
+  return "Logicorp Seller";
+}
+
+function sellerFromUser(user = defaultAuthUser(appEmail()), data = readData()) {
+  const fallback = defaultSeller();
+  const name = displayNameFromUser(user);
+  const kyc = kycForUser(data, user);
+  const now = nowIso();
+  return {
+    ...fallback,
+    id: user.id || fallback.id,
+    name,
+    firstName: user.firstName || (name.includes(" ") ? name.split(" ")[0] : name),
+    lastName: user.lastName || (name.includes(" ") ? name.split(" ").slice(1).join(" ") : ""),
+    email: user.email || fallback.email,
+    phone: user.phone || "",
+    businessName: user.businessName || (name ? `${name} Store` : "Logicorp Store"),
+    supportEmail: user.email || fallback.supportEmail,
+    contactNumber: user.phone || "",
+    lastLogin: user.updatedAt || now,
+    isActive: user.isActive !== false,
+    onboardingComplete: Boolean(user.onboardingComplete),
+    isVerified: user.isVerified !== false,
+    kycStatus: kyc.status === "approved" ? "approved" : kyc.status === "pending" ? "pending" : "not_started",
+    plan: user.plan || "basic",
+    createdAt: user.createdAt || now,
+    updatedAt: user.updatedAt || now,
+  };
+}
+
+function authUsers(data = readData()) {
+  return Array.isArray(data.authUsers) ? data.authUsers : [];
+}
+
+function userFromRequest(req, data = readData()) {
+  const headerId = String(req.get("x-logicorp-user-id") || "").trim();
+  const headerEmail = normalizeIdentifier(req.get("x-logicorp-user-email"));
+  const users = authUsers(data);
+  const matched = users.find((user) => (
+    (headerId && String(user.id) === headerId) ||
+    (headerEmail && normalizeIdentifier(user.email) === headerEmail)
+  ));
+  if (matched) return matched;
+  if (headerEmail) return defaultAuthUser(headerEmail);
+  return defaultSeller();
+}
+
+function ensureKycRecords(data) {
+  if (!data.kycRecords || typeof data.kycRecords !== "object" || Array.isArray(data.kycRecords)) {
+    data.kycRecords = {};
+  }
+  return data;
+}
+
+function kycForUser(data, user) {
+  ensureKycRecords(data);
+  const userId = user?.id || defaultSeller().id;
+  if (data.kycRecords[userId]) return { ...defaultKycForUser(user), ...data.kycRecords[userId] };
+  if (userId === "demo-client-user" && data.kyc) return { ...defaultKyc(), ...data.kyc };
+  return defaultKycForUser(user);
+}
+
+function setKycForUser(data, user, kyc) {
+  ensureKycRecords(data);
+  const userId = user?.id || defaultSeller().id;
+  data.kycRecords[userId] = { ...kyc, userId, updatedAt: nowIso() };
+  if (userId === "demo-client-user") data.kyc = data.kycRecords[userId];
+  return data.kycRecords[userId];
+}
+
+function allSellers(data = readData()) {
+  const users = authUsers(data);
+  const sellers = users.map((user) => sellerFromUser(user, data));
+  if (!sellers.length) return [sellerFromUser(defaultSeller(), data)];
+  return sellers;
+}
+
+function ordersForUser(orders, user) {
+  if (!user?.id) return orders;
+  if (user.id === defaultSeller().id) {
+    return orders.filter((order) => !order.userId || order.userId === user.id);
+  }
+  return orders.filter((order) => order.userId === user.id);
 }
 
 function credentialFields() {
@@ -2029,7 +2146,7 @@ function buildCourierScorecard(orders) {
     .sort((a, b) => b.totalOrders - a.totalOrders);
 }
 
-function buildSellerDashboard(orders, query = {}) {
+function buildSellerDashboard(orders, query = {}, context = {}) {
   const range = dashboardRange(query);
   const current = filterDashboardOrders(orders, query, range);
   const previous = filterDashboardOrders(orders, query, { start: range.previousStart, end: range.previousEnd });
@@ -2159,7 +2276,7 @@ function buildAdminDashboard(orders, query = {}) {
       totalAlerts: statusCount(current, ["ndr", "lost"]),
     },
     pendingActions: {
-      kycPending: ensureKycSeed(readData()).kyc.status === "approved" ? 0 : 1,
+      kycPending: context.kyc?.status === "approved" ? 0 : 1,
       bankApprovalsPending: 0,
       codRemittancesPending: paymentSplit.cod.orders,
     },
@@ -2177,9 +2294,9 @@ function buildAdminDashboard(orders, query = {}) {
   };
 }
 
-function buildHomeDashboard(orders) {
+function buildHomeDashboard(orders, user = defaultSeller(), data = readData()) {
   const today = new Date().toISOString().slice(0, 10);
-  const wallet = walletForUser(defaultSeller().id);
+  const wallet = walletForUser(user.id, data);
   const recentOrders = [...orders]
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
     .slice(0, 5)
@@ -2599,9 +2716,8 @@ function balanceForUser(userId, transactions) {
   );
 }
 
-function walletForUser(userId) {
-  const user = defaultSeller();
-  const data = ensureWalletSeed(readData());
+function walletForUser(userId, data = readData()) {
+  const user = allSellers(data).find((seller) => seller.id === userId) || sellerFromUser(defaultSeller(), data);
   const balance = balanceForUser(userId, data.walletTransactions || []);
   return {
     id: walletIdForUser(userId),
@@ -2621,7 +2737,7 @@ function walletForUser(userId) {
 
 function walletTransactionsResponse(userId, query = {}) {
   const walletId = walletIdForUser(userId);
-  const all = ensureWalletSeed(readData()).walletTransactions || [];
+  const all = (readData().walletTransactions || []);
   let filtered = all.filter((transaction) => transaction.walletId === walletId);
   if (query.type) filtered = filtered.filter((transaction) => transaction.type === query.type);
   if (query.dateFrom) {
@@ -2654,7 +2770,7 @@ function adjustWallet(userId, payload) {
   const amount = round(toNumber(payload.amount));
   if (amount <= 0) throw Object.assign(new Error("Wallet amount must be greater than zero"), { status: 400 });
   const type = payload.type === "debit" ? "debit" : "credit";
-  const data = ensureWalletSeed(readData());
+  const data = readData();
   const transaction = {
     id: `wallet-txn-${Date.now()}`,
     walletId: walletIdForUser(userId),
@@ -2668,7 +2784,7 @@ function adjustWallet(userId, payload) {
   };
   data.walletTransactions = [transaction, ...(data.walletTransactions || [])];
   writeData(data);
-  return { transaction, wallet: walletForUser(userId) };
+  return { transaction, wallet: walletForUser(userId, data) };
 }
 
 function fallbackB2cRates(params) {
@@ -3014,15 +3130,23 @@ app.post("/api/auth/verify-otp", (req, res) => {
   return res.json({ user: updatedUser, isNewUser });
 });
 
-app.get("/api/kyc", (_req, res) => {
-  res.json({ success: true, kyc: ensureKycSeed(readData()).kyc });
+app.get("/api/kyc", (req, res) => {
+  const data = readData();
+  const user = userFromRequest(req, data);
+  res.json({ success: true, kyc: kycForUser(data, user) });
 });
 
 app.post("/api/kyc", (req, res) => {
-  const data = ensureKycSeed(readData());
-  data.kyc = approvedKyc({ ...data.kyc, ...req.body });
+  const data = readData();
+  const user = userFromRequest(req, data);
+  const current = kycForUser(data, user);
+  const kyc = setKycForUser(data, user, {
+    ...current,
+    ...req.body,
+    status: "pending",
+  });
   writeData(data);
-  res.json({ success: true, kyc: data.kyc });
+  res.json({ success: true, kyc });
 });
 
 app.post("/api/kyc/upload", upload.single("document"), async (req, res, next) => {
@@ -3044,29 +3168,30 @@ app.post("/api/kyc/upload", upload.single("document"), async (req, res, next) =>
       return res.status(400).json({ success: false, error: "Invalid KYC document type." });
     }
 
-    const data = ensureKycSeed(readData());
+    const data = readData();
+    const user = userFromRequest(req, data);
+    const current = kycForUser(data, user);
     const file = await storeUploadedFile(data, req.file, {
       category: `kyc/${documentKey}`,
       extra: {
         ownerType: "kyc",
-        ownerId: data.kyc.id,
+        ownerId: current.id,
         documentKey,
       },
     });
-    data.kyc = {
-      ...data.kyc,
+    const kyc = setKycForUser(data, user, {
+      ...current,
       [documentKey]: {
         url: file.url,
-        status: data.kyc.status === "approved" ? "approved" : "pending",
+        status: "pending",
         mime: file.mime,
         fileId: file.id,
         fileName: file.originalName,
         uploadedAt: file.createdAt,
       },
-      updatedAt: nowIso(),
-    };
+    });
     writeData(data);
-    res.json({ success: true, kyc: data.kyc, file });
+    res.json({ success: true, kyc, file });
   } catch (err) {
     next(err);
   }
@@ -3074,8 +3199,10 @@ app.post("/api/kyc/upload", upload.single("document"), async (req, res, next) =>
 
 app.get("/api/kyc/document/:documentKey/:fileName", async (req, res, next) => {
   try {
-    const data = ensureFileStore(ensureKycSeed(readData()));
-    const fileId = data.kyc?.[req.params.documentKey]?.fileId;
+    const data = ensureFileStore(readData());
+    const user = userFromRequest(req, data);
+    const kyc = kycForUser(data, user);
+    const fileId = kyc?.[req.params.documentKey]?.fileId;
     if (!fileId) return res.status(404).json({ error: "Document not found" });
     req.params.id = fileId;
     return sendStoredFile(req, res, next);
@@ -3146,13 +3273,15 @@ app.post("/api/rates/b2b/available", async (req, res) => {
 
 app.post("/api/orders", async (req, res, next) => {
   try {
+    const requestData = readData();
+    const requestUser = userFromRequest(req, requestData);
     const orderPayload = normalizeOrderCreatePayload(req.body);
     if (isShadowfaxCourierSelection(orderPayload)) {
       const { result, pickupAddressId } = await createShadowfaxOrder(orderPayload);
-      const order = orderFromPayload(orderPayload, result, pickupAddressId, {
+      const order = { ...orderFromPayload(orderPayload, result, pickupAddressId, {
         serviceProvider: "shadowfax",
         courierName: "Shadowfax",
-      });
+      }), userId: requestUser.id };
       const data = readData();
       data.orders = [order, ...data.orders.filter((item) => item.id !== order.id)];
       writeData(data);
@@ -3170,13 +3299,13 @@ app.post("/api/orders", async (req, res, next) => {
         const message = messageFromProviderData(providerResult) || "Teampafex order creation failed";
         throw Object.assign(new Error(message), { status: 400, providerData: providerResult });
       }
-      const order = orderFromPayload(orderPayload, reconciled, providerAddressIds.pickupAddressId);
+      const order = { ...orderFromPayload(orderPayload, reconciled, providerAddressIds.pickupAddressId), userId: requestUser.id };
       const data = readData();
       data.orders = [order, ...data.orders.filter((item) => item.id !== order.id)];
       writeData(data);
       return res.json({ order, warning: "Teampafex returned a failed response, but the order was found and saved locally." });
     }
-    const order = orderFromPayload(orderPayload, providerResult, providerAddressIds.pickupAddressId);
+    const order = { ...orderFromPayload(orderPayload, providerResult, providerAddressIds.pickupAddressId), userId: requestUser.id };
     const data = readData();
     data.orders = [order, ...data.orders.filter((item) => item.id !== order.id)];
     writeData(data);
@@ -3186,23 +3315,31 @@ app.post("/api/orders", async (req, res, next) => {
   }
 });
 
-app.get("/api/dashboard/home", async (_req, res) => {
-  const orders = await currentOrders();
-  res.json(buildHomeDashboard(orders));
+app.get("/api/dashboard/home", async (req, res) => {
+  const data = readData();
+  const user = userFromRequest(req, data);
+  const orders = ordersForUser(await currentOrders(), user);
+  res.json(buildHomeDashboard(orders, user, data));
 });
 
 app.get("/api/dashboard/summary", async (req, res) => {
-  const orders = await currentOrders();
-  res.json(buildSellerDashboard(orders, req.query));
+  const data = readData();
+  const user = userFromRequest(req, data);
+  const orders = ordersForUser(await currentOrders(), user);
+  res.json(buildSellerDashboard(orders, req.query, { user, kyc: kycForUser(data, user) }));
 });
 
 app.get("/api/orders", async (req, res) => {
-  const orders = await currentOrders();
+  const data = readData();
+  const user = userFromRequest(req, data);
+  const orders = ordersForUser(await currentOrders(), user);
   res.json(listResponse(orders, req.query));
 });
 
 app.get("/api/orders/courier-options", async (req, res) => {
-  const orders = await currentOrders();
+  const data = readData();
+  const user = userFromRequest(req, data);
+  const orders = ordersForUser(await currentOrders(), user);
   const filtered = req.query.orderType ? orders.filter((order) => order.orderType === req.query.orderType) : orders;
   const couriers = Object.values(filtered.reduce((acc, order) => {
     const id = String(order.courierId || order.serviceProvider || "");
@@ -3270,13 +3407,17 @@ app.get("/api/orders/:id", (req, res) => {
   return res.json({ order });
 });
 
-app.get("/api/wallet/balance", (_req, res) => {
-  const wallet = walletForUser(defaultSeller().id);
+app.get("/api/wallet/balance", (req, res) => {
+  const data = readData();
+  const user = userFromRequest(req, data);
+  const wallet = walletForUser(user.id, data);
   res.json({ balance: wallet.balance, currency: wallet.currency });
 });
 
 app.get("/api/wallet/transactions", (req, res) => {
-  res.json(walletTransactionsResponse(defaultSeller().id, req.query));
+  const data = readData();
+  const user = userFromRequest(req, data);
+  res.json(walletTransactionsResponse(user.id, req.query));
 });
 
 app.post("/api/wallet/recharge/create-order", (req, res) => {
@@ -3293,9 +3434,11 @@ app.post("/api/wallet/recharge/create-order", (req, res) => {
 app.post("/api/wallet/recharge/verify", (req, res, next) => {
   try {
     const amount = round(toNumber(req.body?.amount || req.body?.razorpaySignature));
+    const data = readData();
+    const user = userFromRequest(req, data);
     const result = amount > 0
-      ? adjustWallet(defaultSeller().id, { type: "credit", amount, reason: "wallet_recharge", notes: "Wallet recharge verified" })
-      : { wallet: walletForUser(defaultSeller().id) };
+      ? adjustWallet(user.id, { type: "credit", amount, reason: "wallet_recharge", notes: "Wallet recharge verified" })
+      : { wallet: walletForUser(user.id, data) };
     return res.json({
       message: amount > 0 ? "Wallet recharged" : "Wallet balance unchanged",
       balance: result.wallet.balance,
@@ -3541,14 +3684,15 @@ app.post("/api/webhooks/shadowfax", (req, res) => {
 });
 
 app.get("/api/admin/wallets", (req, res) => {
-  const wallet = walletForUser(defaultSeller().id);
+  const data = readData();
+  const allWallets = allSellers(data).map((seller) => walletForUser(seller.id, data));
   const wallets = req.query.search
-    ? [wallet].filter((item) =>
+    ? allWallets.filter((item) =>
         [item.userName, item.userEmail, item.userPhone, item.businessName]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(String(req.query.search).toLowerCase())),
       )
-    : [wallet];
+    : allWallets;
   res.json({
     wallets,
     pagination: { page: 1, limit: Number(req.query.limit || 20), total: wallets.length, totalPages: 1 },
@@ -3562,18 +3706,19 @@ app.get("/api/admin/wallets", (req, res) => {
 });
 
 app.get("/api/admin/wallets/:userId", (req, res) => {
-  if (req.params.userId !== defaultSeller().id) return res.status(404).json({ error: "Wallet not found" });
-  return res.json({ wallet: walletForUser(req.params.userId) });
+  const data = readData();
+  if (!allSellers(data).some((seller) => seller.id === req.params.userId)) return res.status(404).json({ error: "Wallet not found" });
+  return res.json({ wallet: walletForUser(req.params.userId, data) });
 });
 
 app.get("/api/admin/wallets/:userId/transactions", (req, res) => {
-  if (req.params.userId !== defaultSeller().id) return res.status(404).json({ error: "Wallet not found" });
+  if (!allSellers(readData()).some((seller) => seller.id === req.params.userId)) return res.status(404).json({ error: "Wallet not found" });
   return res.json(walletTransactionsResponse(req.params.userId, req.query));
 });
 
 app.post("/api/admin/wallets/:userId/adjust", (req, res, next) => {
   try {
-    if (req.params.userId !== defaultSeller().id) return res.status(404).json({ error: "Wallet not found" });
+    if (!allSellers(readData()).some((seller) => seller.id === req.params.userId)) return res.status(404).json({ error: "Wallet not found" });
     const result = adjustWallet(req.params.userId, req.body || {});
     return res.json({ message: "Wallet adjusted", wallet: result.wallet, transaction: result.transaction });
   } catch (err) {
@@ -3582,44 +3727,83 @@ app.post("/api/admin/wallets/:userId/adjust", (req, res, next) => {
 });
 
 app.get("/api/admin/users", (req, res) => {
-  const users = [defaultSeller()];
+  let users = allSellers(readData());
+  if (req.query.search) {
+    const search = String(req.query.search).toLowerCase();
+    users = users.filter((user) => [user.name, user.email, user.phone, user.businessName].filter(Boolean).some((value) => String(value).toLowerCase().includes(search)));
+  }
+  if (req.query.status) {
+    const status = String(req.query.status).toLowerCase();
+    users = users.filter((user) => {
+      if (status === "verified") return user.kycStatus === "approved";
+      if (status === "pending") return user.kycStatus === "pending";
+      if (status === "not_started") return user.kycStatus === "not_started";
+      if (status === "inactive") return !user.isActive;
+      if (status === "active") return user.isActive;
+      return true;
+    });
+  }
   const page = Math.max(1, Number(req.query.page || 1));
   const limit = Math.max(1, Number(req.query.limit || 20));
+  const kycVerified = users.filter((user) => user.kycStatus === "approved").length;
+  const kycPending = users.filter((user) => user.kycStatus === "pending").length;
+  const kycNotStarted = users.filter((user) => user.kycStatus === "not_started").length;
+  const onboarded = users.filter((user) => user.onboardingComplete).length;
+  const active = users.filter((user) => user.isActive).length;
   res.json({
     users: users.slice((page - 1) * limit, page * limit),
-    pagination: { page, limit, total: users.length, totalPages: 1 },
+    pagination: { page, limit, total: users.length, totalPages: Math.max(1, Math.ceil(users.length / limit)) },
     stats: {
-      total: 1,
-      verified: 1,
-      onboarded: 1,
-      active: 1,
-      kycPending: 0,
-      kycVerified: 1,
-      inactive: 0,
-      notOnboarded: 0,
-      kycNotStarted: 0,
+      total: users.length,
+      verified: kycVerified,
+      onboarded,
+      active,
+      kycPending,
+      kycVerified,
+      inactive: users.length - active,
+      notOnboarded: users.length - onboarded,
+      kycNotStarted,
     },
   });
 });
 
 app.get("/api/admin/users/:userId", (req, res) => {
-  const user = defaultSeller();
-  if (req.params.userId !== user.id) return res.status(404).json({ error: "User not found" });
+  const user = allSellers(readData()).find((seller) => seller.id === req.params.userId);
+  if (!user) return res.status(404).json({ error: "User not found" });
   res.json({ user });
 });
 
 app.get("/api/admin/users/:userId/kyc", (req, res) => {
-  const kyc = ensureKycSeed(readData()).kyc;
+  const data = readData();
+  const user = allSellers(data).find((seller) => seller.id === req.params.userId);
+  if (!user) return res.status(404).json({ error: "User not found" });
+  const kyc = kycForUser(data, user);
   if (req.params.userId !== kyc.userId) return res.status(404).json({ error: "KYC not found" });
   res.json({ success: true, kyc });
 });
 
-app.post("/api/admin/kyc/:id/approve", (_req, res) => {
-  res.json({ success: true, kyc: ensureKycSeed(readData()).kyc });
+app.post("/api/admin/kyc/:id/approve", (req, res) => {
+  const data = readData();
+  const user = allSellers(data).find((seller) => kycForUser(data, seller).id === req.params.id);
+  if (!user) return res.status(404).json({ error: "KYC not found" });
+  const kyc = setKycForUser(data, user, { ...kycForUser(data, user), status: "approved" });
+  writeData(data);
+  res.json({ success: true, kyc });
 });
 
-app.post("/api/admin/kyc/:id/document/:key/approve", (_req, res) => {
-  res.json({ success: true, kyc: ensureKycSeed(readData()).kyc });
+app.post("/api/admin/kyc/:id/document/:key/approve", (req, res) => {
+  const data = readData();
+  const user = allSellers(data).find((seller) => kycForUser(data, seller).id === req.params.id);
+  if (!user) return res.status(404).json({ error: "KYC not found" });
+  const current = kycForUser(data, user);
+  const document = current[req.params.key];
+  if (!document) return res.status(404).json({ error: "Document not found" });
+  const kyc = setKycForUser(data, user, {
+    ...current,
+    [req.params.key]: { ...document, status: "approved" },
+  });
+  writeData(data);
+  res.json({ success: true, kyc });
 });
 
 app.get("/api/admin/users/:userId/pickup-addresses", (_req, res) => {

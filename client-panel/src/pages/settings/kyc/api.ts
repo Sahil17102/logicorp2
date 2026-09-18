@@ -42,34 +42,22 @@ function makeEmptyKyc(): KycRecord {
   };
 }
 
-function approveForLiveOrderSetup(kyc: KycRecord): KycRecord {
-  return {
-    ...kyc,
-    businessStructure: kyc.businessStructure ?? "sole_proprietor",
-    status: "approved",
-    selfie: { ...kyc.selfie, status: "approved" },
-    panCard: { ...kyc.panCard, status: "approved" },
-    aadhaar: { ...kyc.aadhaar, status: "approved" },
-    cancelledCheque: { ...kyc.cancelledCheque, status: "approved" },
-  };
-}
-
 function readStaticKyc(): KycRecord {
   if (typeof window === "undefined") return makeEmptyKyc();
   const raw = localStorage.getItem(KYC_STORAGE_KEY);
   if (!raw) {
     const kyc = makeEmptyKyc();
     localStorage.setItem(KYC_STORAGE_KEY, JSON.stringify(kyc));
-    return approveForLiveOrderSetup(kyc);
+    return kyc;
   }
 
   try {
     const parsed = JSON.parse(raw) as KycRecord;
-    return approveForLiveOrderSetup({ ...makeEmptyKyc(), ...parsed });
+    return { ...makeEmptyKyc(), ...parsed };
   } catch {
     const kyc = makeEmptyKyc();
     localStorage.setItem(KYC_STORAGE_KEY, JSON.stringify(kyc));
-    return approveForLiveOrderSetup(kyc);
+    return kyc;
   }
 }
 
@@ -120,9 +108,7 @@ export const kycApi = {
 
     try {
       const { data } = await api.get("/kyc");
-      return isKycResponse(data)
-        ? { ...data, kyc: approveForLiveOrderSetup(data.kyc) }
-        : { success: true, kyc: readStaticKyc() };
+      return isKycResponse(data) ? data : { success: true, kyc: readStaticKyc() };
     } catch {
       return { success: true, kyc: readStaticKyc() };
     }

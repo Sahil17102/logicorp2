@@ -108,7 +108,7 @@ export const authApi = {
   getSession: async (): Promise<User | null> => {
     const user = readUser();
     if (user) setAccessToken("static-client-token");
-    return user ?? persistUser(DEMO_USER);
+    return user;
   },
 
   sendOtp: async (identifier: string): Promise<{ isNewUser: boolean }> => {
