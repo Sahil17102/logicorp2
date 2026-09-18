@@ -764,7 +764,7 @@ function sellerFromUser(user = defaultAuthUser(appEmail()), data = readData()) {
     isActive: user.isActive !== false,
     onboardingComplete: Boolean(user.onboardingComplete),
     isVerified: user.isVerified !== false,
-    kycStatus: kyc.status === "approved" ? "approved" : kyc.status === "pending" ? "pending" : "not_started",
+    kycStatus: kyc.status === "approved" ? "approved" : kyc.status === "pending" ? "pending" : "not_submitted",
     plan: user.plan || "basic",
     createdAt: user.createdAt || now,
     updatedAt: user.updatedAt || now,
@@ -3737,7 +3737,7 @@ app.get("/api/admin/users", (req, res) => {
     users = users.filter((user) => {
       if (status === "verified") return user.kycStatus === "approved";
       if (status === "pending") return user.kycStatus === "pending";
-      if (status === "not_started") return user.kycStatus === "not_started";
+      if (status === "not_started" || status === "not_submitted") return user.kycStatus === "not_submitted";
       if (status === "inactive") return !user.isActive;
       if (status === "active") return user.isActive;
       return true;
@@ -3747,7 +3747,7 @@ app.get("/api/admin/users", (req, res) => {
   const limit = Math.max(1, Number(req.query.limit || 20));
   const kycVerified = users.filter((user) => user.kycStatus === "approved").length;
   const kycPending = users.filter((user) => user.kycStatus === "pending").length;
-  const kycNotStarted = users.filter((user) => user.kycStatus === "not_started").length;
+  const kycNotStarted = users.filter((user) => user.kycStatus === "not_submitted").length;
   const onboarded = users.filter((user) => user.onboardingComplete).length;
   const active = users.filter((user) => user.isActive).length;
   res.json({

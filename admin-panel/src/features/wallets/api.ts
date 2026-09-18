@@ -10,7 +10,7 @@ import type {
   WalletTransaction,
 } from "./types";
 
-const useStaticData = !import.meta.env.VITE_API_URL || import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
+const useStaticData = import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
 const STATIC_WALLET_TRANSACTIONS_KEY = "logicorp-static-wallet-transactions";
 const STATIC_WALLET_ID = "wallet-demo-client-user";
 

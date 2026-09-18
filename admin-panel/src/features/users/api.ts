@@ -10,7 +10,7 @@ import type {
   UserSummary,
 } from "./types";
 
-const useStaticData = !import.meta.env.VITE_API_URL || import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
+const useStaticData = import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
 const KYC_STATUSES = ["not_submitted", "pending", "approved", "rejected"] as const;
 
 function asRecord(value: unknown): Record<string, unknown> {

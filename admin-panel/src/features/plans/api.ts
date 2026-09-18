@@ -7,7 +7,7 @@ import type {
   Plan,
 } from "./types";
 
-const useStaticData = !import.meta.env.VITE_API_URL || import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
+const useStaticData = import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
 
 function nowIso(): string {
   return new Date().toISOString();

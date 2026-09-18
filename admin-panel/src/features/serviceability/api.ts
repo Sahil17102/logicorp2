@@ -11,7 +11,7 @@ import type {
   PincodeLookupResponse,
 } from "./types";
 
-const useStaticData = !import.meta.env.VITE_API_URL || import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
+const useStaticData = import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
 const MIN_FULL_DATASET_SIZE = 1000;
 const PINCODE_CSV_PRIMARY_URL =
   import.meta.env.VITE_PINCODE_CSV_PRIMARY_URL ||

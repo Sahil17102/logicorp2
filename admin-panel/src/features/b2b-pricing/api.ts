@@ -19,7 +19,7 @@ import type {
 } from "./types";
 
 const useStaticPricingData =
-  !import.meta.env.VITE_API_URL || import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
+  import.meta.env.VITE_STATIC_DATA_ENABLED === "true";
 
 // ── Zones ──
 
