@@ -3130,6 +3130,37 @@ app.post("/api/auth/verify-otp", (req, res) => {
   return res.json({ user: updatedUser, isNewUser });
 });
 
+app.post("/api/auth/onboarding", (req, res) => {
+  const data = readData();
+  const user = userFromRequest(req, data);
+  const users = authUsers(data);
+  const firstName = typeof req.body?.firstName === "string" ? req.body.firstName.trim() : user.firstName;
+  const lastName = typeof req.body?.lastName === "string" ? req.body.lastName.trim() : user.lastName;
+  const email = normalizeIdentifier(req.body?.email || user.email);
+  const phone = typeof req.body?.phone === "string" && req.body.phone.trim() ? req.body.phone.trim() : user.phone;
+  const businessName = typeof req.body?.businessName === "string" ? req.body.businessName.trim() : user.businessName;
+  const name = [firstName, lastName].filter(Boolean).join(" ").trim() || user.name || (email ? email.split("@")[0] : null);
+  const updatedUser = {
+    ...user,
+    firstName,
+    lastName,
+    name,
+    email: email || user.email,
+    phone: phone || null,
+    businessName: businessName || user.businessName,
+    pincode: typeof req.body?.pincode === "string" ? req.body.pincode.trim() : user.pincode,
+    sellsOn: Array.isArray(req.body?.sellsOn) ? req.body.sellsOn : user.sellsOn,
+    monthlyShipmentVolume: typeof req.body?.monthlyShipmentVolume === "string" ? req.body.monthlyShipmentVolume : user.monthlyShipmentVolume,
+    integrationsOfInterest: Array.isArray(req.body?.integrationsOfInterest) ? req.body.integrationsOfInterest : user.integrationsOfInterest,
+    isVerified: true,
+    onboardingComplete: true,
+    updatedAt: nowIso(),
+  };
+  data.authUsers = [updatedUser, ...users.filter((item) => item.id !== updatedUser.id)];
+  writeData(data);
+  return res.json({ user: updatedUser });
+});
+
 app.get("/api/kyc", (req, res) => {
   const data = readData();
   const user = userFromRequest(req, data);

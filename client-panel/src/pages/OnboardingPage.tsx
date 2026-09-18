@@ -88,8 +88,8 @@ export function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>(1);
 
   // Step 1 — Personal Info
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
+  const [firstName, setFirstName] = useState(user?.firstName ?? "");
+  const [lastName, setLastName] = useState(user?.lastName ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [pincode, setPincode] = useState("");

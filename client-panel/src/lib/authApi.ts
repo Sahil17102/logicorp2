@@ -1,6 +1,7 @@
 import type { User } from "@/contexts/AuthContext";
 import { api, setAccessToken } from "./api";
 import { isCourierApiConfigured, loginCourierApi, shouldUseCourierApi } from "./courierApi";
+import { shouldUseStaticClientData } from "./staticMode";
 
 const USER_STORAGE_KEY = "logicorp-client-user";
 const ACCOUNTS_STORAGE_KEY = "logicorp-client-accounts";
@@ -159,6 +160,11 @@ export const authApi = {
 
   onboarding: async (payload: Record<string, unknown>): Promise<{ user: User }> => {
     const current = readUser() ?? DEMO_USER;
+    if (!shouldUseStaticClientData()) {
+      const { data } = await api.post<{ user: User }>("/auth/onboarding", payload);
+      return { user: persistUser(data.user) };
+    }
+
     const firstName = typeof payload.firstName === "string" ? payload.firstName : current.firstName;
     const lastName = typeof payload.lastName === "string" ? payload.lastName : current.lastName;
     const email = typeof payload.email === "string" ? payload.email : current.email;
