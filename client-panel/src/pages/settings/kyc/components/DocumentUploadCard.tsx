@@ -85,8 +85,10 @@ export function DocumentUploadCard({
     setPreviewLoading(true);
     try {
       // Derive extension from the stored URL (e.g. "kyc/userId/cancelledCheque.webp" → "webp")
-      const ext = field.url.split(".").pop() || "jpg";
-      const res = await api.get(`/kyc/document/${documentKey}/${documentKey}.${ext}`, {
+      const previewPath = field.url.startsWith("/files/")
+        ? field.url
+        : `/kyc/document/${documentKey}/${documentKey}.${field.url.split(".").pop() || "jpg"}`;
+      const res = await api.get(previewPath, {
         responseType: "blob",
       });
       const blobUrl = URL.createObjectURL(res.data);

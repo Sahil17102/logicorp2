@@ -1,10 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import crypto from "node:crypto";
 import axios from "axios";
 import cors from "cors";
 import express from "express";
+import multer from "multer";
 import nodemailer from "nodemailer";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8080);
@@ -29,12 +32,23 @@ const SMTP_SECURE = String(process.env.SMTP_SECURE || "true") !== "false";
 const SMTP_USER = process.env.SMTP_USER || APP_EMAIL;
 const SMTP_PASS = process.env.SMTP_PASS || "";
 const OTP_TTL_MS = 10 * 60 * 1000;
+const R2_ENDPOINT_RAW = process.env.R2_ENDPOINT || "";
+const R2_ENDPOINT = R2_ENDPOINT_RAW.replace(/\/+$/, "").replace(/\/shipzilla-prod$/i, "");
+const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || "";
+const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "";
+const R2_BUCKET = process.env.PROD_BUCKET || process.env.R2_BUCKET || "";
+const R2_PREFIX = cleanPathSegment(process.env.R2_PREFIX || "logicorp");
 
 let cachedToken = TEAMPAFEX_API_TOKEN || null;
 let cachedTokenKey = TEAMPAFEX_API_TOKEN ? "env-token" : null;
 let mailTransporter = null;
+let r2Client = null;
 
 const app = express();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: Number(process.env.MAX_UPLOAD_BYTES || 10 * 1024 * 1024) },
+});
 app.use(express.json({ limit: "2mb" }));
 app.use(cors({
   origin(origin, cb) {
@@ -77,6 +91,114 @@ function writeData(data) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
   return data;
+}
+
+function cleanPathSegment(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .map((part) => part.replace(/[^a-zA-Z0-9._=-]+/g, "-").replace(/^-+|-+$/g, ""))
+    .filter(Boolean)
+    .join("/");
+}
+
+function safeFileName(value) {
+  const fallback = "upload.bin";
+  const base = path.basename(String(value || fallback)).replace(/[^a-zA-Z0-9._-]+/g, "-");
+  return base || fallback;
+}
+
+function r2Configured() {
+  return Boolean(R2_ENDPOINT && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET);
+}
+
+function getR2Client() {
+  if (!r2Configured()) return null;
+  if (!r2Client) {
+    r2Client = new S3Client({
+      region: "auto",
+      endpoint: R2_ENDPOINT,
+      forcePathStyle: true,
+      credentials: {
+        accessKeyId: R2_ACCESS_KEY_ID,
+        secretAccessKey: R2_SECRET_ACCESS_KEY,
+      },
+    });
+  }
+  return r2Client;
+}
+
+function ensureFileStore(data) {
+  if (!Array.isArray(data.files)) data.files = [];
+  return data;
+}
+
+function storageKey(category, fileName) {
+  const date = new Date().toISOString().slice(0, 10);
+  const folder = cleanPathSegment(category || "general") || "general";
+  const name = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}-${safeFileName(fileName)}`;
+  return [R2_PREFIX, folder, date, name].filter(Boolean).join("/");
+}
+
+async function storeUploadedFile(data, file, options = {}) {
+  if (!file?.buffer) {
+    throw Object.assign(new Error("No file uploaded."), { status: 400 });
+  }
+  if (!r2Configured()) {
+    throw Object.assign(new Error("Cloud storage is not configured on this server."), { status: 500 });
+  }
+
+  ensureFileStore(data);
+  const id = `file-${crypto.randomUUID()}`;
+  const category = cleanPathSegment(options.category || "general") || "general";
+  const key = storageKey(category, file.originalname);
+  await getR2Client().send(new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    Body: file.buffer,
+    ContentType: file.mimetype || "application/octet-stream",
+    Metadata: {
+      app: "logicorp",
+      category,
+      originalName: safeFileName(file.originalname),
+    },
+  }));
+
+  const record = {
+    id,
+    app: "logicorp",
+    category,
+    bucket: R2_BUCKET,
+    key,
+    url: `/files/${id}`,
+    originalName: file.originalname,
+    mime: file.mimetype || "application/octet-stream",
+    size: file.size,
+    createdAt: nowIso(),
+    ...options.extra,
+  };
+  data.files = [record, ...data.files.filter((item) => item.id !== id)];
+  return record;
+}
+
+async function sendStoredFile(req, res, next) {
+  try {
+    const data = ensureFileStore(readData());
+    const file = data.files.find((item) => item.id === req.params.id);
+    if (!file) return res.status(404).json({ error: "File not found" });
+    const response = await getR2Client().send(new GetObjectCommand({
+      Bucket: file.bucket || R2_BUCKET,
+      Key: file.key,
+    }));
+    res.setHeader("Content-Type", response.ContentType || file.mime || "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename="${safeFileName(file.originalName)}"`);
+    if (response.ContentLength) res.setHeader("Content-Length", String(response.ContentLength));
+    return response.Body.pipe(res);
+  } catch (err) {
+    return next(err);
+  }
 }
 
 function appEmail() {
@@ -2735,6 +2857,39 @@ app.get("/api/health/config", (_req, res) => {
   res.json({ ok: true, config: providerConfigStatus() });
 });
 
+app.get("/api/storage/config", (_req, res) => {
+  res.json({
+    ok: true,
+    storage: {
+      provider: "cloudflare-r2",
+      configured: r2Configured(),
+      bucket: R2_BUCKET || null,
+      prefix: R2_PREFIX || null,
+    },
+  });
+});
+
+app.get("/api/files/:id", sendStoredFile);
+
+app.post("/api/storage/upload", upload.single("file"), async (req, res, next) => {
+  try {
+    const data = ensureFileStore(readData());
+    const category = req.body?.category || "general";
+    const file = await storeUploadedFile(data, req.file, {
+      category,
+      extra: {
+        ownerType: req.body?.ownerType || "logicorp",
+        ownerId: req.body?.ownerId || null,
+        purpose: req.body?.purpose || category,
+      },
+    });
+    writeData(data);
+    res.json({ success: true, file });
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.get("/api/health/provider", async (_req, res) => {
   try {
     const stats = await providerRequest("get", "/api/statistics");
@@ -2870,8 +3025,63 @@ app.post("/api/kyc", (req, res) => {
   res.json({ success: true, kyc: data.kyc });
 });
 
-app.post("/api/kyc/upload", (_req, res) => {
-  res.json({ success: true, kyc: ensureKycSeed(readData()).kyc });
+app.post("/api/kyc/upload", upload.single("document"), async (req, res, next) => {
+  try {
+    const documentKeys = [
+      "selfie",
+      "panCard",
+      "aadhaar",
+      "cancelledCheque",
+      "boardResolution",
+      "partnershipDeed",
+      "llpAgreement",
+      "companyAddressProof",
+      "businessPan",
+      "gstCertificate",
+    ];
+    const documentKey = String(req.body?.documentKey || "");
+    if (!documentKeys.includes(documentKey)) {
+      return res.status(400).json({ success: false, error: "Invalid KYC document type." });
+    }
+
+    const data = ensureKycSeed(readData());
+    const file = await storeUploadedFile(data, req.file, {
+      category: `kyc/${documentKey}`,
+      extra: {
+        ownerType: "kyc",
+        ownerId: data.kyc.id,
+        documentKey,
+      },
+    });
+    data.kyc = {
+      ...data.kyc,
+      [documentKey]: {
+        url: file.url,
+        status: data.kyc.status === "approved" ? "approved" : "pending",
+        mime: file.mime,
+        fileId: file.id,
+        fileName: file.originalName,
+        uploadedAt: file.createdAt,
+      },
+      updatedAt: nowIso(),
+    };
+    writeData(data);
+    res.json({ success: true, kyc: data.kyc, file });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/api/kyc/document/:documentKey/:fileName", async (req, res, next) => {
+  try {
+    const data = ensureFileStore(ensureKycSeed(readData()));
+    const fileId = data.kyc?.[req.params.documentKey]?.fileId;
+    if (!fileId) return res.status(404).json({ error: "Document not found" });
+    req.params.id = fileId;
+    return sendStoredFile(req, res, next);
+  } catch (err) {
+    return next(err);
+  }
 });
 
 app.get("/api/pickup-addresses", (_req, res) => {
