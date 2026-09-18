@@ -2,7 +2,7 @@
  * Single source of truth for app theme.
  * No hardcoded colors elsewhere — use these tokens or CSS vars derived from them.
  *
- * Palette aligned with the public Rocketride landing page.
+ * Palette aligned with the public Logicorp landing page.
  */
 
 /* ── Color palette shape (shared by light & dark) ── */

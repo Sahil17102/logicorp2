@@ -42,8 +42,8 @@ export function AppLogo({
       <LogoMark className={`${icon} ${iconTone}`} />
       {showText && (
         <span className={`flex flex-col whitespace-nowrap font-extrabold leading-none tracking-[0.02em] ${text} ${textClassName}`}>
-          ROCKETRIDE
-          <small className="mt-1 text-[7px] font-bold tracking-[0.24em] text-[#ff7043]">BY RUDRA FREIGHT SOLUTIONS</small>
+          LOGICORP
+          <small className="mt-1 text-[7px] font-bold tracking-[0.24em] text-[#ff7043]">LOGISTICS PLATFORM</small>
         </span>
       )}
     </>
@@ -51,7 +51,7 @@ export function AppLogo({
 
   if (to) {
     return (
-      <Link to={to} className={`flex items-center gap-2.5 no-underline ${className}`} aria-label="Rocketride home">
+      <Link to={to} className={`flex items-center gap-2.5 no-underline ${className}`} aria-label="Logicorp home">
         {content}
       </Link>
     );

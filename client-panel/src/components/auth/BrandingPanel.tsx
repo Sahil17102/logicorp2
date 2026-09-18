@@ -59,7 +59,7 @@ export function BrandingPanel() {
         </div>
       </motion.div>
 
-      <p className="relative z-10 text-xs text-white/55">Rocketride by <strong className="text-white">Rudra Freight Solutions Pvt Ltd</strong></p>
+      <p className="relative z-10 text-xs text-white/55">Logicorp by <strong className="text-white">Logicorp Logistics Pvt. Ltd.</strong></p>
       <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-[#225bd6] via-[#5b9cff] to-[#ff7043]" />
     </aside>
   );
