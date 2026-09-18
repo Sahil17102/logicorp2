@@ -18,7 +18,9 @@ const initialMode = savedTheme === "dark" || savedTheme === "light"
   ? savedTheme
   : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 injectThemeVars(initialMode);
-ensureStaticSeeds();
+if (import.meta.env.VITE_STATIC_DATA_ENABLED === "true") {
+  ensureStaticSeeds();
+}
 
 // Replace Ant Design's default dotted spinner globally
 Spin.setDefaultIndicator(<AppSpinner />);
