@@ -840,33 +840,127 @@ function pdfEscape(value) {
   return String(value ?? "").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 }
 
-function makeSimplePdf(title, lines = []) {
-  const safeLines = [title, "", ...lines]
-    .flatMap((line) => String(line ?? "").split(/\r?\n/))
-    .flatMap((line) => {
-      const chunks = [];
-      const text = line || " ";
-      for (let i = 0; i < text.length; i += 88) chunks.push(text.slice(i, i + 88));
-      return chunks.length ? chunks : [" "];
-    })
-    .slice(0, 48);
-  const content = [
-    "BT",
-    "/F1 18 Tf",
-    "50 790 Td",
-    `(${pdfEscape(safeLines[0])}) Tj`,
-    "/F1 10 Tf",
-    "0 -28 Td",
-    ...safeLines.slice(1).flatMap((line) => [`(${pdfEscape(line)}) Tj`, "0 -15 Td"]),
-    "ET",
-  ].join("\n");
+function formatInr(value) {
+  return `INR ${round(toNumber(value || 0), 2).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function truncateText(value, max = 70) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return text.length > max ? `${text.slice(0, Math.max(0, max - 1))}...` : text;
+}
+
+function wrapText(value, maxChars = 42) {
+  const words = String(value ?? "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines = [];
+  let line = "";
+  words.forEach((word) => {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length > maxChars && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  });
+  if (line) lines.push(line);
+  return lines.length ? lines : [""];
+}
+
+function pdfTextOp(x, y, text, options = {}) {
+  const size = options.size || 10;
+  const font = options.font || "F1";
+  return `BT /${font} ${size} Tf ${x} ${y} Td (${pdfEscape(truncateText(text, options.max || 120))}) Tj ET`;
+}
+
+function pdfLineOp(x1, y1, x2, y2) {
+  return `${x1} ${y1} m ${x2} ${y2} l S`;
+}
+
+function pdfRectOp(x, y, w, h) {
+  return `${x} ${y} ${w} ${h} re S`;
+}
+
+function pdfFillRectOp(x, y, w, h, rgb = [0.96, 0.98, 1]) {
+  return `${rgb.join(" ")} rg ${x} ${y} ${w} ${h} re f 0 0 0 rg`;
+}
+
+function drawWrapped(ops, x, y, text, options = {}) {
+  const lines = wrapText(text, options.maxChars || 42).slice(0, options.maxLines || 4);
+  lines.forEach((line, index) => {
+    ops.push(pdfTextOp(x, y - (index * (options.lineHeight || 13)), line, options));
+  });
+  return y - (lines.length * (options.lineHeight || 13));
+}
+
+function addressLines(address = {}) {
+  return [
+    address.contactName || address.buyerName || address.name || address.nickname || "",
+    [address.phone, address.email].filter(Boolean).join(" | "),
+    [address.addressLine1 || address.address, address.addressLine2].filter(Boolean).join(", "),
+    [address.city, address.state, address.pincode].filter(Boolean).join(", "),
+    address.country || "India",
+  ].filter(Boolean);
+}
+
+function orderAmount(order) {
+  const invoice = Array.isArray(order.invoices) ? order.invoices[0] : null;
+  return toNumber(invoice?.invoiceValue || order.totalAmount || order.orderAmount || order.codAmount || 0);
+}
+
+function orderProducts(order) {
+  const products = Array.isArray(order.products) ? order.products : [];
+  return products.length ? products : [{ name: "Shipment item", quantity: 1, unitPrice: orderAmount(order) }];
+}
+
+function orderInvoice(order) {
+  return Array.isArray(order.invoices) && order.invoices[0] ? order.invoices[0] : {};
+}
+
+function docHeaderOps(title, subtitle = "") {
+  return [
+    "0.8 w",
+    pdfFillRectOp(36, 770, 523, 42, [0.08, 0.20, 0.42]),
+    "1 1 1 rg",
+    pdfTextOp(54, 796, "Logicorp", { size: 20, font: "F2", max: 30 }),
+    pdfTextOp(54, 779, "Shipping & Logistics", { size: 9, max: 40 }),
+    pdfTextOp(362, 794, title, { size: 15, font: "F2", max: 35 }),
+    pdfTextOp(362, 779, subtitle || `Generated ${new Date().toLocaleDateString("en-IN")}`, { size: 8, max: 45 }),
+    "0 0 0 rg",
+  ];
+}
+
+function barcodeOps(value, x, y, width, height) {
+  const text = String(value || "LOGICORP").toUpperCase();
+  const ops = [pdfRectOp(x, y, width, height)];
+  let cursor = x + 8;
+  [...text].forEach((char, index) => {
+    const code = char.charCodeAt(0) + index;
+    const barWidth = (code % 3) + 1;
+    if (cursor + barWidth < x + width - 8 && code % 2 === 0) {
+      ops.push(`0 0 0 rg ${cursor} ${y + 8} ${barWidth} ${height - 16} re f`);
+    }
+    cursor += barWidth + 2;
+  });
+  ops.push(pdfTextOp(x + 10, y + 10, text, { size: 10, font: "F2", max: 42 }));
+  return ops;
+}
+
+function makePdf(pages) {
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    `<< /Length ${Buffer.byteLength(content, "utf8")} >>\nstream\n${content}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
   ];
+  const pageIds = [];
+  pages.forEach((content) => {
+    const pageId = objects.length + 1;
+    const contentId = objects.length + 2;
+    pageIds.push(pageId);
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentId} 0 R >>`);
+    objects.push(`<< /Length ${Buffer.byteLength(content, "utf8")} >>\nstream\n${content}\nendstream`);
+  });
+  objects[1] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageIds.length} >>`;
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
   objects.forEach((object, index) => {
@@ -882,39 +976,126 @@ function makeSimplePdf(title, lines = []) {
   return Buffer.from(pdf, "utf8");
 }
 
-function orderDocumentLines(order) {
+function labelPageOps(order, pageTitle = "Shipping Label") {
   const delivery = order.deliveryAddress || {};
   const pickup = order.pickupAddress || {};
-  const products = Array.isArray(order.products) ? order.products : [];
-  return [
-    `Order ID: ${order.orderId || order.id}`,
-    `AWB: ${order.awb || "Not assigned"}`,
-    `Status: ${order.status || ""}`,
-    `Courier: ${order.courierName || order.serviceProvider || ""}`,
-    `Payment: ${String(order.paymentType || "").toUpperCase()}`,
-    `Order Type: ${order.orderType || ""}`,
-    "",
-    "Ship To",
-    `${delivery.contactName || delivery.buyerName || ""}`,
-    `${delivery.phone || ""} ${delivery.email || ""}`.trim(),
-    `${delivery.addressLine1 || delivery.address || ""}`,
-    `${delivery.city || ""}, ${delivery.state || ""} - ${delivery.pincode || ""}`,
-    "",
-    "Pickup From",
-    `${pickup.contactName || pickup.name || pickup.nickname || ""}`,
-    `${pickup.addressLine1 || pickup.address || ""}`,
-    `${pickup.city || ""}, ${pickup.state || ""} - ${pickup.pincode || ""}`,
-    "",
-    "Products",
-    ...(products.length ? products.map((item, i) => `${i + 1}. ${item.name || item.productName || "Item"} x ${item.quantity || item.qty || 1}`) : ["No product rows"]),
-    "",
-    `Total: INR ${round(toNumber(order.totalAmount || order.orderAmount || order.invoiceValue || 0), 2)}`,
-    `Generated: ${nowIso()}`,
+  const ops = docHeaderOps("Logicorp Shipping Label", pageTitle);
+  ops.push(pdfRectOp(36, 36, 523, 720));
+  ops.push(...barcodeOps(order.awb || order.providerOrderId || order.orderId || order.id, 56, 648, 230, 78));
+  ops.push(pdfTextOp(314, 712, "ORDER", { size: 8, font: "F2", max: 20 }));
+  ops.push(pdfTextOp(314, 694, order.orderId || order.id, { size: 16, font: "F2", max: 28 }));
+  ops.push(pdfTextOp(314, 670, `Courier: ${order.courierName || order.serviceProvider || "Not assigned"}`, { size: 10, max: 38 }));
+  ops.push(pdfTextOp(314, 654, `Payment: ${String(order.paymentType || "prepaid").toUpperCase()} | Value: ${formatInr(orderAmount(order))}`, { size: 10, max: 45 }));
+  ops.push(pdfFillRectOp(56, 592, 230, 34, [0.93, 0.96, 1]));
+  ops.push(pdfTextOp(70, 606, "SHIP TO", { size: 12, font: "F2", max: 20 }));
+  let y = 574;
+  addressLines(delivery).forEach((line, index) => {
+    y = drawWrapped(ops, 70, y - (index ? 0 : 0), line, { size: index === 0 ? 12 : 9, font: index === 0 ? "F2" : "F1", maxChars: 31, maxLines: 2 });
+  });
+  ops.push(pdfFillRectOp(314, 592, 220, 34, [0.96, 0.98, 1]));
+  ops.push(pdfTextOp(328, 606, "PICKUP FROM", { size: 12, font: "F2", max: 22 }));
+  y = 574;
+  const pickupLines = addressLines(pickup).length ? addressLines(pickup) : ["Logicorp Pickup Location", "Address available in seller panel"];
+  pickupLines.forEach((line, index) => {
+    y = drawWrapped(ops, 328, y, line, { size: index === 0 ? 12 : 9, font: index === 0 ? "F2" : "F1", maxChars: 29, maxLines: 2 });
+  });
+  ops.push(pdfFillRectOp(56, 344, 478, 32, [0.08, 0.20, 0.42]));
+  ops.push("1 1 1 rg", pdfTextOp(70, 355, "SHIPMENT DETAILS", { size: 12, font: "F2", max: 30 }), "0 0 0 rg");
+  const rows = [
+    ["Order Type", order.orderType || "B2C"],
+    ["Status", order.status || "Created"],
+    ["Weight", `${order.chargeableWeight || order.weight || 0} kg`],
+    ["Dimensions", `${order.length || 0} x ${order.breadth || 0} x ${order.height || 0} cm`],
+    ["COD Amount", formatInr(order.codAmount || 0)],
   ];
+  rows.forEach((row, index) => {
+    const rowY = 316 - (index * 28);
+    ops.push(pdfLineOp(56, rowY + 18, 534, rowY + 18));
+    ops.push(pdfTextOp(70, rowY, row[0], { size: 9, font: "F2", max: 18 }));
+    ops.push(pdfTextOp(180, rowY, row[1], { size: 9, max: 42 }));
+  });
+  ops.push(pdfTextOp(70, 154, "Products", { size: 11, font: "F2", max: 16 }));
+  orderProducts(order).slice(0, 4).forEach((item, index) => {
+    ops.push(pdfTextOp(70, 136 - (index * 16), `${index + 1}. ${item.name || item.productName || "Item"} x ${item.quantity || item.qty || 1}`, { size: 9, max: 70 }));
+  });
+  ops.push(pdfTextOp(70, 64, "If undelivered, return this shipment to the pickup address above.", { size: 8, max: 80 }));
+  return ops.join("\n");
 }
 
-function sendPdf(res, filename, title, lines) {
-  const pdf = makeSimplePdf(title, lines);
+function invoicePageOps(order) {
+  const invoice = orderInvoice(order);
+  const products = orderProducts(order);
+  const ops = docHeaderOps("Tax Invoice", `Invoice ${invoice.invoiceNumber || order.orderId || order.id}`);
+  ops.push(pdfRectOp(36, 36, 523, 720));
+  ops.push(pdfTextOp(56, 724, "Invoice Details", { size: 12, font: "F2", max: 30 }));
+  [
+    ["Invoice No.", invoice.invoiceNumber || order.orderId || order.id],
+    ["Invoice Date", invoice.invoiceDate || String(order.createdAt || nowIso()).slice(0, 10)],
+    ["Order ID", order.orderId || order.id],
+    ["AWB", order.awb || "Not assigned"],
+    ["Payment", String(order.paymentType || "").toUpperCase()],
+  ].forEach((row, index) => {
+    const x = index < 3 ? 56 : 316;
+    const yy = index < 3 ? 700 - (index * 18) : 700 - ((index - 3) * 18);
+    ops.push(pdfTextOp(x, yy, `${row[0]}:`, { size: 9, font: "F2", max: 18 }));
+    ops.push(pdfTextOp(x + 82, yy, row[1], { size: 9, max: 28 }));
+  });
+  ops.push(pdfFillRectOp(56, 594, 230, 28, [0.93, 0.96, 1]), pdfTextOp(70, 604, "Bill To / Ship To", { size: 11, font: "F2", max: 25 }));
+  let y = 576;
+  addressLines(order.deliveryAddress || {}).forEach((line, index) => {
+    y = drawWrapped(ops, 70, y, line, { size: index === 0 ? 11 : 9, font: index === 0 ? "F2" : "F1", maxChars: 32, maxLines: 2 });
+  });
+  ops.push(pdfFillRectOp(314, 594, 220, 28, [0.96, 0.98, 1]), pdfTextOp(328, 604, "Seller / Pickup", { size: 11, font: "F2", max: 25 }));
+  y = 576;
+  const pickupLines = addressLines(order.pickupAddress || {}).length ? addressLines(order.pickupAddress || {}) : ["Logicorp Seller", "Pickup address in seller panel"];
+  pickupLines.forEach((line, index) => {
+    y = drawWrapped(ops, 328, y, line, { size: index === 0 ? 11 : 9, font: index === 0 ? "F2" : "F1", maxChars: 30, maxLines: 2 });
+  });
+  ops.push(pdfFillRectOp(56, 404, 478, 30, [0.08, 0.20, 0.42]));
+  ops.push("1 1 1 rg", pdfTextOp(70, 415, "Item", { size: 9, font: "F2" }), pdfTextOp(322, 415, "Qty", { size: 9, font: "F2" }), pdfTextOp(378, 415, "Rate", { size: 9, font: "F2" }), pdfTextOp(462, 415, "Amount", { size: 9, font: "F2" }), "0 0 0 rg");
+  let total = 0;
+  products.slice(0, 8).forEach((item, index) => {
+    const qty = toNumber(item.quantity || item.qty || 1) || 1;
+    const rate = toNumber(item.unitPrice || item.price || (products.length ? orderAmount(order) / products.length : orderAmount(order)));
+    const amount = qty * rate;
+    total += amount;
+    const rowY = 382 - (index * 24);
+    ops.push(pdfLineOp(56, rowY + 16, 534, rowY + 16));
+    ops.push(pdfTextOp(70, rowY, `${index + 1}. ${item.name || item.productName || "Item"}`, { size: 9, max: 42 }));
+    ops.push(pdfTextOp(326, rowY, qty, { size: 9, max: 8 }));
+    ops.push(pdfTextOp(374, rowY, formatInr(rate), { size: 9, max: 16 }));
+    ops.push(pdfTextOp(456, rowY, formatInr(amount), { size: 9, max: 18 }));
+  });
+  const invoiceTotal = orderAmount(order) || total;
+  ops.push(pdfLineOp(330, 136, 534, 136));
+  ops.push(pdfTextOp(360, 114, "Invoice Total", { size: 12, font: "F2", max: 25 }));
+  ops.push(pdfTextOp(456, 114, formatInr(invoiceTotal), { size: 12, font: "F2", max: 22 }));
+  ops.push(pdfTextOp(56, 70, "This is a computer generated invoice for the shipment created on Logicorp.", { size: 8, max: 90 }));
+  return ops.join("\n");
+}
+
+function manifestPageOps(orders) {
+  const ops = docHeaderOps("Pickup Manifest", `${orders.length} shipment${orders.length === 1 ? "" : "s"}`);
+  ops.push(pdfRectOp(36, 36, 523, 720));
+  ops.push(pdfTextOp(56, 724, `Generated: ${new Date().toLocaleString("en-IN")}`, { size: 10, max: 45 }));
+  ops.push(pdfFillRectOp(56, 676, 478, 30, [0.08, 0.20, 0.42]));
+  ops.push("1 1 1 rg", pdfTextOp(66, 687, "#", { size: 9, font: "F2" }), pdfTextOp(94, 687, "Order", { size: 9, font: "F2" }), pdfTextOp(184, 687, "AWB", { size: 9, font: "F2" }), pdfTextOp(288, 687, "Customer", { size: 9, font: "F2" }), pdfTextOp(414, 687, "Pincode", { size: 9, font: "F2" }), pdfTextOp(474, 687, "Payment", { size: 9, font: "F2" }), "0 0 0 rg");
+  orders.slice(0, 24).forEach((order, index) => {
+    const yy = 652 - (index * 24);
+    ops.push(pdfLineOp(56, yy + 16, 534, yy + 16));
+    ops.push(pdfTextOp(66, yy, index + 1, { size: 8, max: 4 }));
+    ops.push(pdfTextOp(94, yy, order.orderId || order.id, { size: 8, max: 16 }));
+    ops.push(pdfTextOp(184, yy, order.awb || "N/A", { size: 8, max: 18 }));
+    ops.push(pdfTextOp(288, yy, order.deliveryAddress?.contactName || order.deliveryAddress?.buyerName || "", { size: 8, max: 22 }));
+    ops.push(pdfTextOp(414, yy, order.deliveryAddress?.pincode || "", { size: 8, max: 10 }));
+    ops.push(pdfTextOp(474, yy, String(order.paymentType || "").toUpperCase(), { size: 8, max: 10 }));
+  });
+  ops.push(pdfLineOp(56, 86, 250, 86), pdfTextOp(96, 66, "Pickup Executive Signature", { size: 9, max: 35 }));
+  ops.push(pdfLineOp(340, 86, 534, 86), pdfTextOp(386, 66, "Seller Signature", { size: 9, max: 28 }));
+  return ops.join("\n");
+}
+
+function sendPdfBuffer(res, filename, pdf) {
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${safeFileName(filename)}"`);
   res.setHeader("Content-Length", String(pdf.length));
@@ -3480,11 +3661,10 @@ app.get("/api/orders/:id/label", (req, res) => {
   const data = readData();
   const order = findOrderForRequest(req, data);
   if (!order) return res.status(404).json({ error: "Order not found" });
-  return sendPdf(
+  return sendPdfBuffer(
     res,
     `label-${order.awb || order.orderId || order.id}.pdf`,
-    "Logicorp Shipping Label",
-    orderDocumentLines(order),
+    makePdf([labelPageOps(order)]),
   );
 });
 
@@ -3492,18 +3672,10 @@ app.get("/api/orders/:id/invoice", (req, res) => {
   const data = readData();
   const order = findOrderForRequest(req, data);
   if (!order) return res.status(404).json({ error: "Order not found" });
-  const invoice = Array.isArray(order.invoices) ? order.invoices[0] : null;
-  return sendPdf(
+  return sendPdfBuffer(
     res,
     `invoice-${order.orderId || order.id}.pdf`,
-    "Logicorp Tax Invoice",
-    [
-      `Invoice No: ${invoice?.invoiceNumber || order.orderId || order.id}`,
-      `Invoice Date: ${invoice?.invoiceDate || String(order.createdAt || "").slice(0, 10)}`,
-      `Invoice Value: INR ${round(toNumber(invoice?.invoiceValue || order.totalAmount || order.orderAmount || 0), 2)}`,
-      "",
-      ...orderDocumentLines(order),
-    ],
+    makePdf([invoicePageOps(order)]),
   );
 });
 
@@ -3515,15 +3687,10 @@ app.post("/api/orders/bulk-labels", (req, res) => {
     ids.includes(String(order.id)) || ids.includes(String(order.orderId)) || ids.includes(String(order.providerOrderId))
   ));
   if (!orders.length) return res.status(404).json({ error: "No matching orders found" });
-  return sendPdf(
+  return sendPdfBuffer(
     res,
     `labels-${orders.length}.pdf`,
-    "Logicorp Bulk Shipping Labels",
-    orders.flatMap((order, index) => [
-      `--- Label ${index + 1} ---`,
-      ...orderDocumentLines(order),
-      "",
-    ]),
+    makePdf(orders.map((order, index) => labelPageOps(order, `Label ${index + 1} of ${orders.length}`))),
   );
 });
 
@@ -3535,18 +3702,10 @@ app.post("/api/orders/manifest", (req, res) => {
     ids.includes(String(order.id)) || ids.includes(String(order.orderId)) || ids.includes(String(order.providerOrderId))
   ));
   if (!orders.length) return res.status(404).json({ error: "No matching orders found" });
-  return sendPdf(
+  return sendPdfBuffer(
     res,
     `manifest-${orders.length}.pdf`,
-    "Logicorp Pickup Manifest",
-    [
-      `Total Orders: ${orders.length}`,
-      `Generated: ${nowIso()}`,
-      "",
-      ...orders.map((order, index) => (
-        `${index + 1}. ${order.orderId || order.id} | AWB: ${order.awb || "N/A"} | ${order.courierName || order.serviceProvider || ""} | ${order.deliveryAddress?.contactName || ""} | ${order.deliveryAddress?.pincode || ""}`
-      )),
-    ],
+    makePdf([manifestPageOps(orders)]),
   );
 });
 
