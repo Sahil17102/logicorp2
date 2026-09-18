@@ -112,7 +112,7 @@ export function assignBasicPlan(): UserListItem {
     pincode: "110001",
     city: "New Delhi",
     state: "Delhi",
-    website: "https://logicorp2.onrender.com",
+    website: "https://logicorp.in",
     supportEmail: "support@logicorp.in",
     contactNumber: "9876543210",
     address: "Connaught Place, New Delhi",

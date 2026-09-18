@@ -167,7 +167,7 @@ const plans = [
   },
 ];
 
-const CLIENT_PANEL_URL = 'https://logicorp2-2.onrender.com';
+const CLIENT_PANEL_URL = 'https://app.logicorp.in/home';
 
 function Logo({ compact = false }) {
   return (

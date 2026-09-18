@@ -6,9 +6,9 @@ Admin service-provider credential saves log in to Teampafex, persist the returne
 
 Shadowfax uses token authentication. Configure `SHADOWFAX_API_TOKEN` (or save it from Admin -> Service Providers -> Shadowfax) before booking real Shadowfax shipments. Direct Shadowfax booking uses the warehouse forward endpoint `/v3/clients/orders/`; tracking uses `/v4/clients/orders/{awb}/track/`; cancellation uses `/v3/clients/orders/cancel/`. Configure the Shadowfax portal callback URL as:
 
-- `https://logicorp290.onrender.com/api/webhooks/shadowfax`
+- `https://api.logicorp.in/api/webhooks/shadowfax`
 
-Required Render environment variables:
+Required VPS/systemd environment variables:
 
 - `TEAMPAFEX_EMAIL`
 - `TEAMPAFEX_PASSWORD`
@@ -19,13 +19,13 @@ Required Render environment variables:
 - `CORS_ORIGIN` optional, comma-separated client/admin origins or `*`
 - `DATA_DIR` optional persistent disk path, for example `/var/data`
 
-For the current Render backend service, set both frontends to:
+For the current VPS backend service, set both frontends to:
 
-- `VITE_API_URL=https://logicorp290.onrender.com/api`
+- `VITE_API_URL=https://api.logicorp.in/api`
 
-Render web service commands:
+Local build/start commands:
 
 - Build: `npm run render:build`
 - Start: `npm run render:start`
 
-For production stability, keep `TEAMPAFEX_EMAIL` and `TEAMPAFEX_PASSWORD` set on the Render web service even though the admin panel can verify and save credentials. Admin-saved JWTs live under `DATA_DIR`, so a missing persistent disk or a fresh service can otherwise boot with no courier credentials.
+For production stability, keep `TEAMPAFEX_EMAIL` and `TEAMPAFEX_PASSWORD` set on the VPS service even though the admin panel can verify and save credentials. Admin-saved JWTs live under `DATA_DIR`, so a missing persistent directory or a fresh service can otherwise boot with no courier credentials.

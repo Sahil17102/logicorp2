@@ -31,7 +31,7 @@ function defaultProfile(): ProfileResponse {
       email: user.email ?? "client@logicorp.in",
       phone: user.phone ?? "9876543210",
       businessName: "Logicorp Demo Store",
-      website: "https://logicorp2.onrender.com",
+      website: "https://logicorp.in",
       supportEmail: "support@logicorp.in",
       contactNumber: "9876543210",
       address: "DLF Cyber City, Sector 24",

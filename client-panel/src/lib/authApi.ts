@@ -3,7 +3,7 @@ import { setAccessToken } from "./api";
 import { isCourierApiConfigured, loginCourierApi, shouldUseCourierApi } from "./courierApi";
 
 const USER_STORAGE_KEY = "logicorp-client-user";
-const ACCOUNTS_STORAGE_KEY = "rocketride-client-accounts";
+const ACCOUNTS_STORAGE_KEY = "logicorp-client-accounts";
 
 const DEMO_USER: User = {
   id: "demo-client-user",
@@ -108,7 +108,7 @@ export const authApi = {
   getSession: async (): Promise<User | null> => {
     const user = readUser();
     if (user) setAccessToken("static-client-token");
-    return user;
+    return user ?? persistUser(DEMO_USER);
   },
 
   sendOtp: async (identifier: string): Promise<{ isNewUser: boolean }> => {

@@ -37,7 +37,7 @@ function App() {
   return (
     <Routes>
       {/* Auth */}
-      <Route path="/" element={<SignUpPage />} />
+      <Route path="/" element={<Navigate to="/home" replace />} />
       <Route path="/login" element={<SignUpPage />} />
       <Route path="/signup" element={<SignUpPage />} />
       <Route
