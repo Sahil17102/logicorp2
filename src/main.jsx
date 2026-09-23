@@ -172,20 +172,7 @@ const CLIENT_PANEL_URL = 'https://app.logicorp.in/home';
 function Logo({ compact = false }) {
   return (
     <div className={`logo ${compact ? 'logo-compact' : ''}`}>
-      <svg viewBox="0 0 64 56" aria-hidden="true">
-        <g stroke="currentColor" strokeWidth="3.4" strokeLinecap="round">
-          <line x1="4" y1="20" x2="20" y2="20" opacity="0.9" />
-          <line x1="1.5" y1="28" x2="20" y2="28" />
-          <line x1="7" y1="36" x2="20" y2="36" opacity="0.9" />
-        </g>
-        <path d="M23 8 h9.5 v26 h11.5 v9 H23 Z" fill="currentColor" />
-        <path d="M39 15 l13 13 l-13 13 v-9 l3.6 -2.4 l-3.6 -1.6 Z" fill="#2563eb" />
-      </svg>
-      {!compact && (
-        <strong>
-          Logi<span>corp</span>
-        </strong>
-      )}
+      <img src="/logicorp-logo.jpeg" alt="Logicorp - Move Smart. Deliver Fast." />
     </div>
   );
 }

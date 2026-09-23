@@ -188,28 +188,21 @@ main section {
   color: var(--content);
 }
 
-.logo svg {
-  width: 36px;
-  height: 32px;
-}
-
-.logo strong {
-  font-size: 22px;
-  line-height: 1;
-  font-weight: 800;
-}
-
-.logo span {
-  color: var(--brand);
+.logo img {
+  width: 148px;
+  height: 58px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #fff;
 }
 
 .logo-compact {
   gap: 0;
 }
 
-.logo-compact svg {
-  width: 29px;
-  height: 26px;
+.logo-compact img {
+  width: 48px;
+  height: 48px;
 }
 
 .nav-links {
