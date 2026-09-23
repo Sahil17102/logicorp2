@@ -268,11 +268,18 @@ async function loadFullPincodeDataset(): Promise<LocationListItem[]> {
   return locations;
 }
 
+function warmFullPincodeDataset(): void {
+  const existing = readStaticLocations();
+  if (existing.length >= MIN_FULL_DATASET_SIZE || fullDatasetPromise) return;
+  fullDatasetPromise = loadFullPincodeDataset().catch(() => readStaticLocations());
+}
+
 async function getStaticLocations(): Promise<LocationListItem[]> {
-  if (!fullDatasetPromise) {
-    fullDatasetPromise = loadFullPincodeDataset().catch(() => readStaticLocations());
+  const existing = readStaticLocations();
+  if (existing.length < MIN_FULL_DATASET_SIZE) {
+    warmFullPincodeDataset();
   }
-  return fullDatasetPromise;
+  return existing;
 }
 
 function filterLocations(
@@ -425,6 +432,9 @@ export const locationsApi = {
     if (useStaticData) {
       const location = (await getStaticLocations()).find((item) => item.pincode === pincode);
       if (location) return { city: location.city, state: location.state };
+      const hydrated = await (fullDatasetPromise ?? loadFullPincodeDataset().catch(() => readStaticLocations()));
+      const hydratedLocation = hydrated.find((item) => item.pincode === pincode);
+      if (hydratedLocation) return { city: hydratedLocation.city, state: hydratedLocation.state };
       throw new Error("Pincode not found in seeded locations");
     }
 

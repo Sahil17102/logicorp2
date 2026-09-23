@@ -26,6 +26,16 @@ export interface ServiceProviderVariant {
  * Used consistently across all admin tables/badges.
  */
 export const SERVICE_PROVIDER_VARIANTS: Record<string, ServiceProviderVariant> = {
+  teampafex: {
+    label: "Teampafex",
+    color: "blue",
+    badgeClass: "bg-blue-500/[0.08] text-blue-600 border border-blue-500/15",
+  },
+  shadowfax: {
+    label: "Shadowfax",
+    color: "orange",
+    badgeClass: "bg-orange-500/[0.08] text-orange-600 border border-orange-500/15",
+  },
   delhivery: {
     label: "Delhivery",
     color: "red",

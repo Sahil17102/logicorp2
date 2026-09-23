@@ -199,6 +199,7 @@ export default function AddPricingModal({ open, onClose, editingItem }: Props) {
           message.success("Pricing saved for all plans");
           handleClose();
         },
+        onError: (error) => message.error(error.message || "Could not save pricing"),
       },
     );
   }

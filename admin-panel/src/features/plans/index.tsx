@@ -22,12 +22,14 @@ export default function PlansPage() {
     const action = record.isActive ? "deactivate" : "activate";
     togglePlan.mutate(record.id, {
       onSuccess: () => message.success(`Plan ${action}d`),
+      onError: (error) => message.error(error.message || `Could not ${action} plan`),
     });
   }
 
   function handleDelete(id: string) {
     deletePlan.mutate(id, {
       onSuccess: () => message.success("Plan deleted"),
+      onError: (error) => message.error(error.message || "Could not delete plan"),
     });
   }
 

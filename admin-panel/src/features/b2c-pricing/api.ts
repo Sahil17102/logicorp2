@@ -113,7 +113,9 @@ export const b2cPricingApi = {
     if (useStaticPricingData) return { pricing: defaultB2cPricingForCourier(courierId) };
 
     try {
-      const { data } = await api.get(`/b2c-pricing/courier/${courierId}`);
+      const { data } = await api.get(`/b2c-pricing/courier/${courierId}`, {
+        params: { all: true },
+      });
       const response = data as { pricing: B2cPricingItem[] };
       return Array.isArray(response.pricing) && response.pricing.length > 0
         ? response

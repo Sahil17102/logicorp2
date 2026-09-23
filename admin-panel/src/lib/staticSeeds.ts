@@ -60,22 +60,18 @@ export function writeStaticLocations(locations: LocationListItem[]): LocationLis
 
 export function seedBasicPlan(): Plan {
   const plans = readJson<Plan[]>(STATIC_PLANS_KEY, []);
-  const existing = plans.find((plan) => plan.slug === "basic");
-  if (existing) return existing;
-
-  const basicPlan: Plan = {
-    id: "plan-basic",
-    name: "Basic",
-    slug: "basic",
-    description: "Default starter plan for new Logicorp sellers.",
-    sortOrder: 1,
-    isDefault: true,
-    isActive: true,
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  };
-  writeStaticPlans([basicPlan, ...plans]);
-  return basicPlan;
+  const createdAt = nowIso();
+  const seeds: Plan[] = [
+    { id: "plan-basic", name: "Basic", slug: "basic", description: "Starter pricing for new Logicorp sellers.", sortOrder: 1, isDefault: true, isActive: true, createdAt, updatedAt: createdAt },
+    { id: "plan-standard", name: "Standard", slug: "standard", description: "Better rates for growing sellers with regular shipment volume.", sortOrder: 2, isDefault: false, isActive: true, createdAt, updatedAt: createdAt },
+    { id: "plan-premium", name: "Premium", slug: "premium", description: "Preferred pricing for high-volume Logicorp sellers.", sortOrder: 3, isDefault: false, isActive: true, createdAt, updatedAt: createdAt },
+  ];
+  const next = [...plans];
+  for (const seed of seeds) {
+    if (!next.some((plan) => plan.slug === seed.slug)) next.push(seed);
+  }
+  writeStaticPlans(next);
+  return next.find((plan) => plan.slug === "basic")!;
 }
 
 export function seedAdmin(): User {

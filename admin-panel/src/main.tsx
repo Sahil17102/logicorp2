@@ -27,6 +27,14 @@ Spin.setDefaultIndicator(<AppSpinner />);
 
 const queryClient = new QueryClient({
   defaultOptions: {
+    queries: {
+      staleTime: 2 * 60 * 1000,
+      gcTime: 30 * 60 * 1000,
+      retry: 1,
+      retryDelay: 500,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+    },
     mutations: {
       onError: (error) => {
         message.error(error.message || "Something went wrong");

@@ -83,6 +83,7 @@ export default function AddPlanModal({ open, onClose, editingPlan }: Props) {
             message.success("Plan updated");
             handleClose();
           },
+          onError: (error) => message.error(error.message || "Could not update plan"),
         },
       );
     } else {
@@ -98,6 +99,7 @@ export default function AddPlanModal({ open, onClose, editingPlan }: Props) {
             message.success("Plan created");
             handleClose();
           },
+          onError: (error) => message.error(error.message || "Could not create plan"),
         },
       );
     }

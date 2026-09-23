@@ -38,11 +38,24 @@ const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || "";
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "";
 const R2_BUCKET = process.env.PROD_BUCKET || process.env.R2_BUCKET || "";
 const R2_PREFIX = cleanPathSegment(process.env.R2_PREFIX || "logicorp");
+const ORDER_SYNC_INTERVAL_MS = Number(process.env.ORDER_SYNC_INTERVAL_MS || 2 * 60 * 1000);
+const ORDER_SYNC_INITIAL_WAIT_MS = Number(process.env.ORDER_SYNC_INITIAL_WAIT_MS || 500);
+const ADMIN_PROVIDER_WAIT_MS = Number(process.env.ADMIN_PROVIDER_WAIT_MS || 1200);
+const DEFAULT_PLANS = [
+  { id: "plan-basic", name: "Basic", slug: "basic", description: "Starter pricing for new Logicorp sellers.", sortOrder: 1, isDefault: true, isActive: true },
+  { id: "plan-standard", name: "Standard", slug: "standard", description: "Better rates for growing sellers with regular shipment volume.", sortOrder: 2, isDefault: false, isActive: true },
+  { id: "plan-premium", name: "Premium", slug: "premium", description: "Preferred pricing for high-volume Logicorp sellers.", sortOrder: 3, isDefault: false, isActive: true },
+];
+const PINCODE_DATASET_URL = process.env.PINCODE_DATASET_URL || "https://raw.githubusercontent.com/dropdevrahul/pincodes-india/main/pincode.csv";
+const PINCODE_DATASET_FALLBACK_URL = process.env.PINCODE_DATASET_FALLBACK_URL || "https://raw.githubusercontent.com/kishorek/India-Codes/master/csv/pincodes.csv";
+let serviceabilityHydrationPromise = null;
 
 let cachedToken = TEAMPAFEX_API_TOKEN || null;
 let cachedTokenKey = TEAMPAFEX_API_TOKEN ? "env-token" : null;
 let mailTransporter = null;
 let r2Client = null;
+let ordersSyncPromise = null;
+let lastOrderSyncAt = 0;
 
 const app = express();
 const upload = multer({
@@ -61,6 +74,10 @@ app.use(cors({
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function normalizeBaseUrl(value) {
@@ -91,6 +108,41 @@ function writeData(data) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
   return data;
+}
+
+function ensurePlansSeed(data = readData()) {
+  const current = Array.isArray(data.plans) ? data.plans : [];
+  const now = nowIso();
+  let changed = !Array.isArray(data.plans);
+  const plans = [...current];
+  if (data.plansSeedVersion !== 1) {
+    for (const seed of DEFAULT_PLANS) {
+      if (plans.some((plan) => String(plan.slug).toLowerCase() === seed.slug)) continue;
+      plans.push({ ...seed, createdAt: SEED_CREATED_AT, updatedAt: now });
+      changed = true;
+    }
+    data.plansSeedVersion = 1;
+    changed = true;
+  }
+  if (!plans.some((plan) => plan.isDefault)) {
+    const basic = plans.find((plan) => plan.slug === "basic") || plans[0];
+    if (basic) basic.isDefault = true;
+    changed = true;
+  }
+  data.plans = plans.sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || String(a.name).localeCompare(String(b.name)));
+  return changed ? writeData(data) : data;
+}
+
+function cleanPlanSlug(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function plansResponse(query = {}) {
+  const data = ensurePlansSeed(readData());
+  let plans = data.plans || [];
+  if (query.isActive === "true" || query.isActive === true) plans = plans.filter((plan) => plan.isActive);
+  if (query.isActive === "false" || query.isActive === false) plans = plans.filter((plan) => !plan.isActive);
+  return { plans, pagination: { page: 1, limit: Math.max(1, plans.length), total: plans.length, totalPages: 1 } };
 }
 
 function cleanPathSegment(value) {
@@ -1366,6 +1418,181 @@ function ensurePickupSeed(data) {
   return writeData(data);
 }
 
+const SERVICEABILITY_SEED_LOCATIONS = [
+  { pincode: "110001", city: "New Delhi", state: "Delhi", tags: ["north", "metro"] },
+  { pincode: "400001", city: "Mumbai", state: "Maharashtra", tags: ["west", "metro"] },
+  { pincode: "560102", city: "Bengaluru", state: "Karnataka", tags: ["south", "metro"] },
+  { pincode: "700001", city: "Kolkata", state: "West Bengal", tags: ["east", "metro"] },
+  { pincode: "800001", city: "Patna", state: "Bihar", tags: ["east"] },
+  { pincode: "395001", city: "Surat", state: "Gujarat", tags: ["west"] },
+];
+
+const SERVICEABILITY_TAGS = new Set(["north", "south", "east", "west", "metro", "special_zone"]);
+
+function cleanPincode(value) {
+  return String(value || "").trim();
+}
+
+function normalizeLocationTags(tags) {
+  if (!Array.isArray(tags)) return [];
+  return [...new Set(tags.map((tag) => String(tag || "").trim()).filter((tag) => SERVICEABILITY_TAGS.has(tag)))];
+}
+
+function serviceabilityLocationFromPayload(payload, existing) {
+  const pincode = cleanPincode(payload?.pincode ?? existing?.pincode);
+  if (!/^\d{6}$/.test(pincode)) {
+    throw Object.assign(new Error("Valid 6-digit pincode required."), { status: 400 });
+  }
+
+  const city = String(payload?.city ?? existing?.city ?? "").trim();
+  const state = String(payload?.state ?? existing?.state ?? "").trim();
+  if (!city || !state) {
+    throw Object.assign(new Error("City and state are required."), { status: 400 });
+  }
+
+  const createdAt = existing?.createdAt || nowIso();
+  return {
+    id: existing?.id || `loc-${pincode}`,
+    pincode,
+    city,
+    state,
+    tags: normalizeLocationTags(payload?.tags ?? existing?.tags),
+    isActive: typeof payload?.isActive === "boolean" ? payload.isActive : existing?.isActive ?? true,
+    createdAt,
+    updatedAt: existing ? nowIso() : createdAt,
+  };
+}
+
+function ensureServiceabilityLocationsSeed(data) {
+  if (Array.isArray(data.serviceabilityLocations) && data.serviceabilityLocations.length > 0) return data;
+  const createdAt = SEED_CREATED_AT;
+  data.serviceabilityLocations = SERVICEABILITY_SEED_LOCATIONS.map((location) => ({
+    id: `loc-${location.pincode}`,
+    ...location,
+    isActive: true,
+    createdAt,
+    updatedAt: createdAt,
+  }));
+  return writeData(data);
+}
+
+function serviceabilityTitleCase(value) {
+  return String(value || "").trim().toLowerCase().split(/\s+/).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+function serviceabilityCsvFields(line) {
+  const fields = [];
+  let value = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (quoted && line[i + 1] === '"') { value += '"'; i += 1; } else quoted = !quoted;
+    } else if (ch === "," && !quoted) { fields.push(value.trim()); value = ""; } else value += ch;
+  }
+  fields.push(value.trim());
+  return fields;
+}
+
+async function hydrateServiceabilityLocations() {
+  if (serviceabilityHydrationPromise) return serviceabilityHydrationPromise;
+  serviceabilityHydrationPromise = (async () => {
+    const data = ensureServiceabilityLocationsSeed(readData());
+    if (data.serviceabilityDatasetVersion === 2 && (data.serviceabilityLocations || []).length >= 1000) return data;
+    const responses = await Promise.allSettled([
+      axios.get(PINCODE_DATASET_URL, { timeout: 30_000, responseType: "text" }),
+      axios.get(PINCODE_DATASET_FALLBACK_URL, { timeout: 30_000, responseType: "text" }),
+    ]);
+    const map = new Map();
+    const parseRows = (text, fallback = false) => {
+      const lines = String(text || "").split(/\r?\n/);
+      for (let i = 1; i < lines.length; i += 1) {
+        if (!lines[i]?.trim()) continue;
+        const fields = serviceabilityCsvFields(lines[i]);
+        if (fields.length < (fallback ? 5 : 9)) continue;
+        const pincode = String(fields[fallback ? 1 : 4] || "").trim();
+        if (!/^\d{6}$/.test(pincode) || map.has(pincode)) continue;
+        const city = serviceabilityTitleCase(fields[fallback ? 3 : 7]);
+        const state = serviceabilityTitleCase(fields[fallback ? 4 : 8]);
+        const tags = state === "Delhi" ? ["north", "metro"] : state === "Maharashtra" || state === "Gujarat" ? ["west"] : state === "Karnataka" || state === "Tamil Nadu" ? ["south"] : ["east"];
+        map.set(pincode, { id: `loc-${pincode}`, pincode, city, state, tags, isActive: true, createdAt: SEED_CREATED_AT, updatedAt: SEED_CREATED_AT });
+      }
+    };
+    if (responses[0].status === "fulfilled") parseRows(responses[0].value.data);
+    if (responses[1].status === "fulfilled") parseRows(responses[1].value.data, true);
+    (data.serviceabilityLocations || []).forEach((location) => {
+      if (!map.has(location.pincode)) map.set(location.pincode, location);
+    });
+    if (map.size >= 1000) {
+      data.serviceabilityLocations = Array.from(map.values()).sort((a, b) => a.pincode.localeCompare(b.pincode));
+      data.serviceabilityDatasetVersion = 2;
+      writeData(data);
+    }
+    return data;
+  })().catch((error) => {
+    console.warn("[serviceability:hydrate]", error.message || error);
+    return readData();
+  }).finally(() => { serviceabilityHydrationPromise = null; });
+  return serviceabilityHydrationPromise;
+}
+
+function serviceabilityLocationsResponse(query = {}) {
+  const data = ensureServiceabilityLocationsSeed(readData());
+  let locations = [...(data.serviceabilityLocations || [])];
+
+  if (query.search) {
+    const search = String(query.search).toLowerCase();
+    locations = locations.filter((location) =>
+      [location.pincode, location.city, location.state]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(search)),
+    );
+  }
+  if (query.state) locations = locations.filter((location) => location.state === String(query.state));
+  if (query.tag) locations = locations.filter((location) => (location.tags || []).includes(String(query.tag)));
+  if (query.isActive === "true" || query.isActive === "false") {
+    locations = locations.filter((location) => location.isActive === (query.isActive === "true"));
+  }
+
+  locations.sort((a, b) => String(a.pincode).localeCompare(String(b.pincode)));
+  const page = Math.max(1, Number(query.page || 1));
+  const limit = Math.max(1, Number(query.limit || 100));
+  const total = locations.length;
+  const all = data.serviceabilityLocations || [];
+
+  return {
+    locations: locations.slice((page - 1) * limit, page * limit),
+    pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
+    stats: {
+      total: all.length,
+      active: all.filter((location) => location.isActive).length,
+      inactive: all.filter((location) => !location.isActive).length,
+    },
+  };
+}
+
+async function lookupServiceabilityPincode(pincode) {
+  const code = cleanPincode(pincode);
+  if (!/^\d{6}$/.test(code)) {
+    throw Object.assign(new Error("Valid 6-digit pincode required."), { status: 400 });
+  }
+
+  const existing = (ensureServiceabilityLocationsSeed(readData()).serviceabilityLocations || [])
+    .find((location) => location.pincode === code);
+  if (existing) return { city: existing.city, state: existing.state };
+
+  const response = await axios.get(`https://api.postalpincode.in/pincode/${code}`, { timeout: 10_000 });
+  const postOffice = response.data?.[0]?.PostOffice?.[0];
+  if (!postOffice) {
+    throw Object.assign(new Error("Pincode not found."), { status: 404 });
+  }
+
+  return {
+    city: String(postOffice.District || postOffice.Name || "").trim(),
+    state: String(postOffice.State || "").trim(),
+  };
+}
+
 function pickupRegistrationPayload(address) {
   return {
     address_nick_name: address.nickname,
@@ -2260,10 +2487,35 @@ async function syncOrdersWithProvider(orderType = "B2C") {
   return synced;
 }
 
+async function runOrdersSync() {
+  await syncOrdersWithProvider("B2C").catch((err) => {
+    console.warn("[orders:sync:teampafex]", err.message || err);
+  });
+  await syncShadowfaxOrders().catch((err) => {
+    console.warn("[orders:sync:shadowfax]", err.message || err);
+  });
+}
+
+function scheduleOrdersSync() {
+  const now = Date.now();
+  if (ordersSyncPromise) return ordersSyncPromise;
+  if (now - lastOrderSyncAt < ORDER_SYNC_INTERVAL_MS) return null;
+
+  lastOrderSyncAt = now;
+  ordersSyncPromise = runOrdersSync().finally(() => {
+    ordersSyncPromise = null;
+  });
+  return ordersSyncPromise;
+}
+
 async function currentOrders() {
-  await syncOrdersWithProvider("B2C").catch(() => null);
-  await syncShadowfaxOrders().catch(() => null);
-  return readData().orders || [];
+  const localOrders = readData().orders || [];
+  const sync = scheduleOrdersSync();
+  if (sync && localOrders.length === 0 && ORDER_SYNC_INITIAL_WAIT_MS > 0) {
+    await Promise.race([sync, wait(ORDER_SYNC_INITIAL_WAIT_MS)]).catch(() => null);
+    return readData().orders || localOrders;
+  }
+  return localOrders;
 }
 
 function listResponse(orders, query = {}) {
@@ -2703,6 +2955,7 @@ function defaultB2cPricingRows() {
 
 function ensureB2cPricingSeed(data = readData()) {
   let changed = false;
+  const plans = ensurePlansSeed(data).plans || DEFAULT_PLANS;
   if (!Array.isArray(data.b2cZones) || data.b2cZones.length === 0) {
     data.b2cZones = DEFAULT_B2C_ZONES;
     changed = true;
@@ -2727,6 +2980,32 @@ function ensureB2cPricingSeed(data = readData()) {
       data.b2cPricing = [...data.b2cPricing, defaultB2cPricingRows()[1]];
       changed = true;
     }
+  }
+  if (data.b2cPlanPricingSeedVersion !== 1) {
+    const baseRows = (data.b2cPricing || []).filter((pricing) => String(pricing.plan || "basic").toLowerCase() === "basic");
+    for (const plan of plans.filter((item) => item.isActive && item.slug !== "basic")) {
+      for (const base of baseRows) {
+        const exists = data.b2cPricing.some((pricing) => (
+          normalizeCourierId(pricing.courier?.id) === normalizeCourierId(base.courier?.id) && pricing.plan === plan.slug
+        ));
+        if (exists) continue;
+        data.b2cPricing.push({
+          ...base,
+          id: `seed-b2c-pricing-${providerCourierId(base.courier?.id)}-${plan.slug}`,
+          plan: plan.slug,
+          zoneRates: (base.zoneRates || []).map((zoneRate) => ({
+            ...zoneRate,
+            zone: { ...zoneRate.zone },
+            slabRates: (zoneRate.slabRates || []).map((rate) => ({ ...rate })),
+          })),
+          createdAt: SEED_CREATED_AT,
+          updatedAt: nowIso(),
+        });
+        changed = true;
+      }
+    }
+    data.b2cPlanPricingSeedVersion = 1;
+    changed = true;
   }
   return changed ? writeData(data) : data;
 }
@@ -3840,6 +4119,80 @@ app.get("/api/rates/rate-card", (_req, res) => {
   });
 });
 
+app.get("/api/admin/plans", (req, res) => {
+  res.json(plansResponse(req.query));
+});
+
+app.post("/api/admin/plans", (req, res) => {
+  const data = ensurePlansSeed(readData());
+  const name = String(req.body?.name || "").trim();
+  const slug = cleanPlanSlug(req.body?.slug || name);
+  if (!name) return res.status(400).json({ error: "Plan name is required" });
+  if (!slug) return res.status(400).json({ error: "Enter a valid plan slug" });
+  if ((data.plans || []).some((plan) => plan.slug === slug)) return res.status(409).json({ error: "A plan with this slug already exists" });
+  const now = nowIso();
+  const plan = {
+    id: `plan-${slug}-${Date.now()}`,
+    name,
+    slug,
+    description: String(req.body?.description || "").trim(),
+    sortOrder: Math.max(0, Number(req.body?.sortOrder ?? data.plans.length + 1) || 0),
+    isDefault: false,
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+  data.plans.push(plan);
+  writeData(data);
+  return res.status(201).json({ message: "Plan created", plan });
+});
+
+app.put("/api/admin/plans/:id", (req, res) => {
+  const data = ensurePlansSeed(readData());
+  const current = (data.plans || []).find((plan) => plan.id === req.params.id);
+  if (!current) return res.status(404).json({ error: "Plan not found" });
+  const name = req.body?.name === undefined ? current.name : String(req.body.name).trim();
+  if (!name) return res.status(400).json({ error: "Plan name is required" });
+  const updated = {
+    ...current,
+    name,
+    description: req.body?.description === undefined ? current.description : String(req.body.description).trim(),
+    sortOrder: req.body?.sortOrder === undefined ? current.sortOrder : Math.max(0, Number(req.body.sortOrder) || 0),
+    isDefault: req.body?.isDefault === undefined ? current.isDefault : Boolean(req.body.isDefault),
+    updatedAt: nowIso(),
+  };
+  data.plans = data.plans.map((plan) => {
+    if (plan.id === current.id) return updated;
+    return updated.isDefault ? { ...plan, isDefault: false, updatedAt: nowIso() } : plan;
+  });
+  writeData(data);
+  return res.json({ message: "Plan updated", plan: updated });
+});
+
+app.patch("/api/admin/plans/:id/toggle", (req, res) => {
+  const data = ensurePlansSeed(readData());
+  const current = (data.plans || []).find((plan) => plan.id === req.params.id);
+  if (!current) return res.status(404).json({ error: "Plan not found" });
+  if (current.isDefault && current.isActive) return res.status(400).json({ error: "Default plan cannot be deactivated" });
+  const plan = { ...current, isActive: !current.isActive, updatedAt: nowIso() };
+  data.plans = data.plans.map((item) => item.id === plan.id ? plan : item);
+  writeData(data);
+  return res.json({ message: "Plan updated", plan });
+});
+
+app.delete("/api/admin/plans/:id", (req, res) => {
+  const data = ensurePlansSeed(readData());
+  const current = (data.plans || []).find((plan) => plan.id === req.params.id);
+  if (!current) return res.status(404).json({ error: "Plan not found" });
+  if (current.isDefault) return res.status(400).json({ error: "Default plan cannot be deleted" });
+  const assigned = allSellers(data).some((seller) => seller.plan === current.slug);
+  if (assigned) return res.status(409).json({ error: "This plan is assigned to a seller and cannot be deleted" });
+  data.plans = data.plans.filter((plan) => plan.id !== current.id);
+  data.b2cPricing = (data.b2cPricing || []).filter((pricing) => pricing.plan !== current.slug);
+  writeData(data);
+  return res.status(204).end();
+});
+
 app.get("/api/admin/b2c-zones", (req, res) => {
   res.json(listB2cZonesResponse(req.query));
 });
@@ -3912,10 +4265,10 @@ app.get("/api/admin/b2c-pricing", (req, res) => {
 app.get("/api/admin/b2c-pricing/courier/:courierId", (req, res) => {
   const data = ensureB2cPricingSeed(readData());
   const courier = normalizeCourierId(req.params.courierId);
-  const pricing = (data.b2cPricing || []).find((item) => (
+  const matches = (data.b2cPricing || []).filter((item) => (
     normalizeCourierId(item.courier?.id) === courier && (!req.query.plan || item.plan === req.query.plan)
   ));
-  res.json({ pricing: pricing || null });
+  res.json({ pricing: req.query.all === "true" ? matches : (matches[0] || null) });
 });
 
 app.post("/api/admin/b2c-pricing", (req, res) => {
@@ -4192,9 +4545,101 @@ app.get("/api/admin/users/:userId/pickup-addresses", (_req, res) => {
   res.json({ addresses: ensurePickupSeed(readData()).pickupAddresses });
 });
 
+app.get("/api/admin/locations", async (req, res) => {
+  await hydrateServiceabilityLocations();
+  res.json(serviceabilityLocationsResponse(req.query));
+});
+
+app.post("/api/admin/locations", (req, res, next) => {
+  try {
+    const data = ensureServiceabilityLocationsSeed(readData());
+    const existing = (data.serviceabilityLocations || []).find((location) => location.pincode === cleanPincode(req.body?.pincode));
+    const location = serviceabilityLocationFromPayload(req.body || {}, existing);
+    data.serviceabilityLocations = [
+      location,
+      ...(data.serviceabilityLocations || []).filter((item) => item.pincode !== location.pincode),
+    ];
+    writeData(data);
+    return res.json({ message: "Location saved", location });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+app.post("/api/admin/locations/import", (req, res, next) => {
+  try {
+    const incoming = Array.isArray(req.body?.locations) ? req.body.locations : [];
+    const data = ensureServiceabilityLocationsSeed(readData());
+    const existingByPincode = new Map((data.serviceabilityLocations || []).map((location) => [location.pincode, location]));
+    const additions = [];
+
+    incoming.forEach((payload) => {
+      const pincode = cleanPincode(payload?.pincode);
+      if (existingByPincode.has(pincode)) return;
+      const location = serviceabilityLocationFromPayload(payload || {});
+      existingByPincode.set(location.pincode, location);
+      additions.push(location);
+    });
+
+    if (additions.length > 0) {
+      data.serviceabilityLocations = [...additions, ...(data.serviceabilityLocations || [])];
+      writeData(data);
+    }
+
+    return res.json({
+      message: "Locations imported",
+      inserted: additions.length,
+      duplicates: incoming.length - additions.length,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+app.delete("/api/admin/locations/:id", (req, res) => {
+  const data = ensureServiceabilityLocationsSeed(readData());
+  data.serviceabilityLocations = (data.serviceabilityLocations || []).filter((location) => location.id !== req.params.id);
+  writeData(data);
+  res.status(204).end();
+});
+
+app.post("/api/admin/locations/bulk-delete", (req, res) => {
+  const ids = new Set(Array.isArray(req.body?.ids) ? req.body.ids.map(String) : []);
+  const data = ensureServiceabilityLocationsSeed(readData());
+  const before = data.serviceabilityLocations || [];
+  data.serviceabilityLocations = before.filter((location) => !ids.has(location.id));
+  writeData(data);
+  res.json({ deletedCount: before.length - data.serviceabilityLocations.length });
+});
+
+app.patch("/api/admin/locations/:id/toggle", (req, res) => {
+  const data = ensureServiceabilityLocationsSeed(readData());
+  const locations = data.serviceabilityLocations || [];
+  const current = locations.find((location) => location.id === req.params.id);
+  if (!current) return res.status(404).json({ error: "Location not found" });
+  const updated = { ...current, isActive: !current.isActive, updatedAt: nowIso() };
+  data.serviceabilityLocations = locations.map((location) => (location.id === updated.id ? updated : location));
+  writeData(data);
+  return res.json({ message: "Location updated", location: updated });
+});
+
+app.get("/api/admin/locations/pincode-lookup/:pincode", async (req, res, next) => {
+  try {
+    const location = await lookupServiceabilityPincode(req.params.pincode);
+    return res.json(location);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 app.get("/api/admin/couriers", async (req, res) => {
   try {
-    const response = await adminCouriersResponse(req.query);
+    const response = await Promise.race([
+      adminCouriersResponse(req.query),
+      wait(ADMIN_PROVIDER_WAIT_MS).then(() => {
+        throw Object.assign(new Error("Courier provider lookup timed out."), { status: 504 });
+      }),
+    ]);
     const hasShadowfax = response.couriers.some((courier) => courier.serviceProvider === "shadowfax");
     const shadowfaxCourier = { id: SHADOWFAX_FORWARD_COURIER_ID, name: "Shadowfax", serviceProvider: "shadowfax", serviceProviderDisplayName: "Shadowfax", courierType: "delivery", businessType: ["b2c"], isEnabled: true, logo: null, createdAt: "", updatedAt: "" };
     const canIncludeShadowfax =
